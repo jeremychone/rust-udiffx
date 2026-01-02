@@ -1,0 +1,37 @@
+[package]
+name = "udiffx"
+version = "0.1.0-alpha.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Parse and apply LLM-optimized unified diff + XML file changes"
+homepage = "https://github.com/jeremychone/rust-udiffx"
+repository = "https://github.com/jeremychone/rust-udiffx"
+categories = [
+  "development-tools",
+  "parser-implementations",
+  "filesystem"
+]
+keywords = [
+  "diff",
+  "patch",
+  "unified-diff",
+  "llm",
+  "code-editing"
+]
+
+[lints.rust]
+unsafe_code = "forbid"
+# unused = { level = "allow", priority = -1 } # For exploratory dev.
+
+[dependencies]
+# -- Async
+tokio = { version = "1", features = ["full"] }
+# -- Files
+simple-fs = "0.9"
+# -- Diff & Text
+diffy = "0.4.2"
+markex = "0.1.0-alpha.3"
+
+
+# -- Others
+derive_more = { version = "2", features = ["from", "display"] }
