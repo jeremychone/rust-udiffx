@@ -1,14 +1,14 @@
-use crate::{ApplyChangesInfo, DirectiveInfo, FileChanges, FileDirective, Result, fs_guard};
+use crate::{ApplyChangesStatus, DirectiveStatus, FileChanges, FileDirective, Result, fs_guard};
 use diffy::{Patch, apply};
 use simple_fs::{SPath, ensure_file_dir, read_to_string};
 use std::fs;
 
 /// Executes the file changes defined in `AipFileChanges` relative to `base_dir`.
-pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result<ApplyChangesInfo> {
+pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
 	let mut infos = Vec::new();
 
 	for directive in file_changes {
-		let mut info = DirectiveInfo::from(&directive);
+		let mut info = DirectiveStatus::from(&directive);
 
 		let res: Result<()> = (|| {
 			match directive {
@@ -36,8 +36,7 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					fs_guard::check_for_write(&full_path, base_dir)?;
 
 					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
-					let patch_obj =
-						Patch::from_str(&patch_content.content).map_err(crate::Error::diffy_parse_patch)?;
+					let patch_obj = Patch::from_str(&patch_content.content).map_err(crate::Error::diffy_parse_patch)?;
 					let new_content = apply(&original_content, &patch_obj).map_err(crate::Error::diffy_apply_patch)?;
 
 					fs::write(&full_path, new_content)
@@ -67,9 +66,8 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 
 					if full_path.exists() {
 						if full_path.is_dir() {
-							fs::remove_dir_all(&full_path).map_err(|err| {
-								crate::Error::io_delete_dir_all(full_path.to_string(), err)
-							})?;
+							fs::remove_dir_all(&full_path)
+								.map_err(|err| crate::Error::io_delete_dir_all(full_path.to_string(), err))?;
 						} else {
 							fs::remove_file(&full_path)
 								.map_err(|err| crate::Error::io_delete_file(full_path.to_string(), err))?;
@@ -94,5 +92,5 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 		infos.push(info);
 	}
 
-	Ok(ApplyChangesInfo { infos })
+	Ok(ApplyChangesStatus { infos })
 }

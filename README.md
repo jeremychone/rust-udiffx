@@ -34,7 +34,7 @@ Key public types:
 
 - `FileChanges`, iterable list of directives.
 - `FileDirective`, one directive (new, patch, rename, delete, fail).
-- `ApplyChangesInfo`, per-directive success and error reporting.
+- `ApplyChangesStatus`, per-directive success and error reporting.
 - `Error` / `Result<T>`, crate error type and alias.
 
 ## Extracting changes from text
@@ -103,9 +103,9 @@ fn main() -> Result<()> {
 "#;
 
     let (changes, _) = extract_file_changes(input, false)?;
-    let info = apply_file_changes(&base_dir, changes)?;
+    let status = apply_file_changes(&base_dir, changes)?;
 
-    for d in info.infos {
+    for d in status.infos {
         if d.success() {
             println!("OK   {} {}", d.kind(), d.file_path());
         } else {

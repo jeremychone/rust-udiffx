@@ -1,12 +1,12 @@
 use crate::FileDirective;
 
 #[derive(Debug, Clone)]
-pub struct ApplyChangesInfo {
-	pub infos: Vec<DirectiveInfo>,
+pub struct ApplyChangesStatus {
+	pub infos: Vec<DirectiveStatus>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DirectiveInfo {
+pub struct DirectiveStatus {
 	pub kind: DirectiveKind,
 	pub success: bool,
 	pub error_msg: Option<String>,
@@ -34,7 +34,7 @@ pub enum DirectiveKind {
 	},
 }
 
-impl DirectiveInfo {
+impl DirectiveStatus {
 	pub fn file_path(&self) -> &str {
 		match &self.kind {
 			DirectiveKind::New { file_path } => file_path,
@@ -66,7 +66,7 @@ impl DirectiveInfo {
 
 // region:    --- Froms
 
-impl From<&FileDirective> for DirectiveInfo {
+impl From<&FileDirective> for DirectiveStatus {
 	fn from(directive: &FileDirective) -> Self {
 		let mut error_msg = None;
 
