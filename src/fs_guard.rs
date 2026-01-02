@@ -18,9 +18,7 @@ fn check_in_base(target: &SPath, base_dir: &SPath) -> Result<()> {
 	let target = target.clone().into_collapsed();
 
 	if !target.as_str().starts_with(base_dir.as_str()) {
-		return Err(
-			format!("Security Violation: Path '{target}' resolves outside of base directory '{base_dir}'").into(),
-		);
+		return Err(crate::Error::security_violation(target.to_string(), base_dir.to_string()).into());
 	}
 
 	Ok(())

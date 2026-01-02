@@ -43,7 +43,9 @@ pub fn extract_file_changes(input: &str, extract_content: bool) -> Result<(FileC
 		let directive_res = (|| -> Result<FileDirective> {
 			match tag_name.as_str() {
 				"FILE_NEW" => {
-					let file_path = attrs.remove("file_path").ok_or("FILE_NEW missing 'file_path' attribute")?;
+					let file_path = attrs
+						.remove("file_path")
+						.ok_or_else(|| crate::Error::parse_missing_attribute("FILE_NEW", "file_path"))?;
 
 					Ok(FileDirective::New {
 						file_path,
@@ -51,7 +53,9 @@ pub fn extract_file_changes(input: &str, extract_content: bool) -> Result<(FileC
 					})
 				}
 				"FILE_PATCH" => {
-					let file_path = attrs.remove("file_path").ok_or("FILE_PATCH missing 'file_path' attribute")?;
+					let file_path = attrs
+						.remove("file_path")
+						.ok_or_else(|| crate::Error::parse_missing_attribute("FILE_PATCH", "file_path"))?;
 
 					Ok(FileDirective::Patch {
 						file_path,
@@ -59,17 +63,23 @@ pub fn extract_file_changes(input: &str, extract_content: bool) -> Result<(FileC
 					})
 				}
 				"FILE_RENAME" => {
-					let from_path = attrs.remove("from_path").ok_or("FILE_RENAME missing 'from_path' attribute")?;
-					let to_path = attrs.remove("to_path").ok_or("FILE_RENAME missing 'to_path' attribute")?;
+					let from_path = attrs
+						.remove("from_path")
+						.ok_or_else(|| crate::Error::parse_missing_attribute("FILE_RENAME", "from_path"))?;
+					let to_path = attrs
+						.remove("to_path")
+						.ok_or_else(|| crate::Error::parse_missing_attribute("FILE_RENAME", "to_path"))?;
 
 					Ok(FileDirective::Rename { from_path, to_path })
 				}
 				"FILE_DELETE" => {
-					let file_path = attrs.remove("file_path").ok_or("FILE_DELETE missing 'file_path' attribute")?;
+					let file_path = attrs
+						.remove("file_path")
+						.ok_or_else(|| crate::Error::parse_missing_attribute("FILE_DELETE", "file_path"))?;
 
 					Ok(FileDirective::Delete { file_path })
 				}
-				_ => Err(format!("Unknown directive tag: {tag_name}").into()),
+				_ => Err(crate::Error::parse_unknown_directive_tag(tag_name.to_string()).into()),
 			}
 		})();
 

@@ -1,12 +1,13 @@
 // region:    --- Modules
 
+mod fs_guard;
+
 mod applier;
 mod apply_changes_info;
 mod error;
 mod extract;
 mod file_changes;
 mod file_directives;
-mod fs_guard;
 
 pub use applier::*;
 pub use apply_changes_info::*;

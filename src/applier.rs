@@ -16,8 +16,15 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					let full_path = base_dir.join(&file_path);
 					fs_guard::check_for_write(&full_path, base_dir)?;
 
-					ensure_file_dir(&full_path)?;
-					fs::write(&full_path, &content.content)?;
+					ensure_file_dir(&full_path).map_err(crate::Error::simple_fs)?;
+
+					if full_path.exists() {
+						fs::write(&full_path, &content.content)
+							.map_err(|err| crate::Error::io_write_file(full_path.to_string(), err))?;
+					} else {
+						fs::write(&full_path, &content.content)
+							.map_err(|err| crate::Error::io_create_file(full_path.to_string(), err))?;
+					}
 				}
 
 				FileDirective::Patch {
@@ -28,11 +35,13 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					fs_guard::check_for_read(&full_path, base_dir)?;
 					fs_guard::check_for_write(&full_path, base_dir)?;
 
-					let original_content = read_to_string(&full_path)?;
-					let patch_obj = Patch::from_str(&patch_content.content)?;
-					let new_content = apply(&original_content, &patch_obj)?;
+					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
+					let patch_obj =
+						Patch::from_str(&patch_content.content).map_err(crate::Error::diffy_parse_patch)?;
+					let new_content = apply(&original_content, &patch_obj).map_err(crate::Error::diffy_apply_patch)?;
 
-					fs::write(&full_path, new_content)?;
+					fs::write(&full_path, new_content)
+						.map_err(|err| crate::Error::io_write_file(full_path.to_string(), err))?;
 				}
 
 				FileDirective::Rename { from_path, to_path } => {
@@ -43,10 +52,12 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					fs_guard::check_for_write(&full_to, base_dir)?;
 
 					if full_from.exists() {
-						ensure_file_dir(&full_to)?;
-						fs::rename(&full_from, &full_to)?;
+						ensure_file_dir(&full_to).map_err(crate::Error::simple_fs)?;
+						fs::rename(&full_from, &full_to).map_err(|err| {
+							crate::Error::io_rename_path(full_from.to_string(), full_to.to_string(), err)
+						})?;
 					} else {
-						return Err(format!("Rename Source path '{from_path}' not found").into());
+						return Err(crate::Error::apply_path_not_found("rename source", from_path).into());
 					}
 				}
 
@@ -56,12 +67,15 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 
 					if full_path.exists() {
 						if full_path.is_dir() {
-							fs::remove_dir_all(&full_path)?;
+							fs::remove_dir_all(&full_path).map_err(|err| {
+								crate::Error::io_delete_dir_all(full_path.to_string(), err)
+							})?;
 						} else {
-							fs::remove_file(&full_path)?;
+							fs::remove_file(&full_path)
+								.map_err(|err| crate::Error::io_delete_file(full_path.to_string(), err))?;
 						}
 					} else {
-						return Err(format!("Delete path '{file_path}' not found").into());
+						return Err(crate::Error::apply_path_not_found("delete", file_path).into());
 					}
 				}
 
