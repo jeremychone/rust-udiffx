@@ -105,7 +105,7 @@ fn main() -> Result<()> {
     let (changes, _) = extract_file_changes(input, false)?;
     let status = apply_file_changes(&base_dir, changes)?;
 
-    for d in status.infos {
+    for d in status.items {
         if d.success() {
             println!("OK   {} {}", d.kind(), d.file_path());
         } else {

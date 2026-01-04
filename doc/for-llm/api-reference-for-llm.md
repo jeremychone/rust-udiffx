@@ -185,7 +185,7 @@ fn main() -> Result<()> {
     let (changes, _) = extract_file_changes(input, false)?;
     let status = apply_file_changes(&base_dir, changes)?;
 
-    for info in status.infos {
+    for info in status.items {
         if info.success() {
             println!("OK   {} {}", info.kind(), info.file_path());
         } else {
@@ -205,7 +205,7 @@ fn main() -> Result<()> {
 ### ApplyChangesStatus / DirectiveStatus
 
 Types:
-- `pub struct ApplyChangesStatus { pub infos: Vec<DirectiveStatus> }`
+- `pub struct ApplyChangesStatus { pub items: Vec<DirectiveStatus> }`
 - `pub struct DirectiveStatus { pub kind: DirectiveKind, pub success: bool, pub error_msg: Option<String> }`
 
 Helpers:

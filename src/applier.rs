@@ -5,7 +5,7 @@ use std::fs;
 
 /// Executes the file changes defined in `AipFileChanges` relative to `base_dir`.
 pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
-	let mut infos = Vec::new();
+	let mut items = Vec::new();
 
 	for directive in file_changes {
 		let mut info = DirectiveStatus::from(&directive);
@@ -90,8 +90,8 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 			Err(err) => info.error_msg = Some(err.to_string()),
 		}
 
-		infos.push(info);
+		items.push(info);
 	}
 
-	Ok(ApplyChangesStatus { infos })
+	Ok(ApplyChangesStatus { items })
 }

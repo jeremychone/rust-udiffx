@@ -2,7 +2,7 @@ use crate::FileDirective;
 
 #[derive(Debug, Clone)]
 pub struct ApplyChangesStatus {
-	pub infos: Vec<DirectiveStatus>,
+	pub items: Vec<DirectiveStatus>,
 }
 
 #[derive(Debug, Clone)]

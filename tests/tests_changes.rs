@@ -19,7 +19,7 @@ fn test_changes_no_changes() -> Result<()> {
 
 	// -- Check
 	assert!(
-		status.infos.is_empty() || status.infos.iter().all(|i| i.success()),
+		status.items.is_empty() || status.items.iter().all(|i| i.success()),
 		"Expected no failures, got: {status:#?}"
 	);
 
@@ -37,9 +37,9 @@ fn test_changes_simple() -> Result<()> {
 	let status = apply_file_changes(&base_dir, changes)?;
 
 	// -- Check
-	let len = status.infos.iter().count();
+	let len = status.items.iter().count();
 	assert_eq!(5, len, "Wrong directive length");
-	let success_count = status.infos.iter().filter(|i| i.success()).count();
+	let success_count = status.items.iter().filter(|i| i.success()).count();
 	assert_eq!(3, success_count, "Wrong success count");
 
 	Ok(())
@@ -56,9 +56,9 @@ fn test_changes_no_head_nums() -> Result<()> {
 	let status = apply_file_changes(&base_dir, changes)?;
 
 	// -- Check
-	let len = status.infos.iter().count();
+	let len = status.items.iter().count();
 	assert_eq!(5, len, "Wrong directive length");
-	let success_count = status.infos.iter().filter(|i| i.success()).count();
+	let success_count = status.items.iter().filter(|i| i.success()).count();
 	assert_eq!(3, success_count, "Wrong success count");
 	// check main.rs
 	let main_content = simple_fs::read_to_string(base_dir.join("src/main.rs"))?;
@@ -82,9 +82,9 @@ fn test_changes_with_code_fence() -> Result<()> {
 	let status = apply_file_changes(&base_dir_spath, changes)?;
 
 	// -- Check
-	let len = status.infos.iter().count();
+	let len = status.items.iter().count();
 	assert_eq!(5, len, "Wrong directive length");
-	let success_count = status.infos.iter().filter(|i| i.success()).count();
+	let success_count = status.items.iter().filter(|i| i.success()).count();
 	assert_eq!(3, success_count, "Wrong success count");
 
 	Ok(())
