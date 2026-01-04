@@ -27,6 +27,62 @@ fn test_changes_no_changes() -> Result<()> {
 }
 
 #[test]
+fn test_changes_with_newline_surround() -> Result<()> {
+	// -- Setup & Fixtures
+	let base_dir = test_support::new_out_dir_path("test_changes_with_newline_surround")?;
+	let keys_conf_path = base_dir.join("keys.conf");
+	let initial_content = r###"# bind m send-keys "tmux list-panes -a -F '#{?session_attached,ATTACHED,DETACHED} #S:#I.#P \"#{window_name}\" #{pane_current_path} #{pane_current_command}'" Enter
+
+## Disabled for now, since tmux-plugins
+# bind-key -T copy-mode-vi o send-keys -X copy-pipe-and-cancel "pbpaste | xargs open"
+# bind-key -T copy-mode o    send-keys -X copy-pipe-and-cancel "pbpaste | xargs open"
+
+
+# Clear right panels
+bind K send-keys -t 2 "clear" Enter "\\" Enter C-l \; send-keys -t 3 "clear" Enter "\\" Enter C-l
+"###;
+	std::fs::write(&keys_conf_path, initial_content)?;
+
+	let input = r#"
+<FILE_CHANGES>
+
+<FILE_PATCH file_path="keys.conf">
+```conf
+@@
+ ## Disabled for now, since tmux-plugins
+ # bind-key -T copy-mode-vi o send-keys -X copy-pipe-and-cancel "pbpaste | xargs open"
+ # bind-key -T copy-mode o    send-keys -X copy-pipe-and-cancel "pbpaste | xargs open"
++bind-key -T copy-mode-vi o send-keys -X copy-pipe-and-cancel "xargs open"
++bind-key -T copy-mode    o send-keys -X copy-pipe-and-cancel "xargs open"
+
+
+ # Clear right panels
+```
+</FILE_PATCH>
+
+</FILE_CHANGES>
+"#;
+
+	// -- Exec
+	let (changes, _extruded) = extract_file_changes(input, false)?;
+	let status = apply_file_changes(&base_dir, changes)?;
+
+	// -- Check
+	assert_eq!(status.items.len(), 1, "Should have 1 directive status");
+	assert!(
+		status.items[0].success,
+		"Directive should have succeeded. Error: {:?}",
+		status.items[0].error_msg
+	);
+
+	let final_content = std::fs::read_to_string(keys_conf_path)?;
+	assert!(final_content.contains("bind-key -T copy-mode-vi o send-keys -X copy-pipe-and-cancel \"xargs open\""));
+	assert!(final_content.contains("bind-key -T copy-mode    o send-keys -X copy-pipe-and-cancel \"xargs open\""));
+
+	Ok(())
+}
+
+#[test]
 fn test_changes_simple() -> Result<()> {
 	// -- Setup & Fixtures
 	let base_dir = test_support::new_out_dir_path("test_changes_simple")?;
