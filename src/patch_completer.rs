@@ -13,12 +13,12 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 	while let Some(line) = lines.next() {
 		let trimmed = line.trim();
 
-		// If it's an incomplete hunk header
-		if trimmed == "@@" {
+		// If it's a hunk header (recompute even if complete)
+		if trimmed.starts_with("@@") {
 			let mut hunk_lines = Vec::new();
 			while let Some(next_line) = lines.peek() {
 				let next_trimmed = next_line.trim();
-				if next_trimmed == "@@" || next_trimmed.starts_with("@@ -") {
+				if next_trimmed.starts_with("@@") {
 					break;
 				}
 				hunk_lines.push(lines.next().unwrap());
