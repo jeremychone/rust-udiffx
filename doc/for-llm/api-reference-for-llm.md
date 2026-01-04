@@ -1,7 +1,7 @@
 # udiffx, for-llm api reference
 
 - crate: `udiffx`
-- version: `0.1.0-alpha.1`
+- version: `0.1.0-alpha.4`
 - purpose: parse and apply an AI-optimized "file changes" envelope (XML-like tags + unified diff patches)
 
 ## Envelope format (the only thing to parse)
@@ -15,13 +15,14 @@
 Inside `<FILE_CHANGES>`, mix any number of directives:
 
 - `<FILE_NEW file_path="..."> ... </FILE_NEW>`
-- `<FILE_PATCH file_path="..."> ... </FILE_PATCH>` (Unified Diff content)
+- `<FILE_PATCH file_path="..."> ... </FILE_PATCH>` (Unified Diff or Simplified Patch content)
 - `<FILE_RENAME from_path="..." to_path="..." />`
 - `<FILE_DELETE file_path="..." />`
 
 Notes:
 - Tags are XML-like, not fully XML-compliant, content does not need XML escaping.
 - Self-closing tags like `<FILE_DELETE ... />` and `<FILE_RENAME ... />` are supported.
+- `FILE_PATCH` supports simplified hunk headers (`@@`) which automatically find context in the target file.
 
 ## Public API (Rust)
 
@@ -125,6 +126,7 @@ Behavior:
   - trailing line starts with ```
   - stores fences in `code_fence`
   - stores inner payload in `content`
+- It strips one level of leading newline if it exists (either at the start of raw or inside the code fence).
 
 ### Apply
 
@@ -137,7 +139,8 @@ Core rules:
 - Path security guard is enforced:
   - operations must stay within `base_dir` (collapsed path check)
 - Patch application:
-  - uses `diffy` to parse/apply unified diff patches
+  - uses a completion logic to handle simplified `@@` hunk headers by searching for context lines in the target file.
+  - uses `diffy` to parse and apply the resulting unified diff patches.
 
 Directive behavior:
 - `FILE_NEW`
@@ -218,5 +221,5 @@ Helpers:
 - Use self-closing tags when possible for rename and delete:
   - `<FILE_RENAME from_path="a" to_path="b" />`
   - `<FILE_DELETE file_path="path" />`
-- For `FILE_PATCH` content, use valid unified diff hunks starting with `@@ ... @@`.
+- For `FILE_PATCH` content, use valid unified diff hunks starting with `@@ -start,len +start,len @@` or simplified `@@`.
 - `file_path` values should be relative paths (no traversal), to ensure base-dir guard passes.

@@ -30,6 +30,9 @@ pub enum Error {
 	#[display("diffy apply patch error: {cause}")]
 	DiffyApplyPatch { cause: String },
 
+	#[display("patch completion error: {cause}")]
+	PatchCompletion { cause: String },
+
 	// -- Externals (captured as cause strings, but with udiffx semantics)
 	#[display("Read file failed: {_0}")]
 	IoReadFile(PathAndCause),
@@ -149,6 +152,10 @@ impl Error {
 
 	pub fn diffy_apply_patch(err: impl std::error::Error) -> Self {
 		Self::DiffyApplyPatch { cause: err.to_string() }
+	}
+
+	pub fn patch_completion(cause: impl Into<String>) -> Self {
+		Self::PatchCompletion { cause: cause.into() }
 	}
 }
 

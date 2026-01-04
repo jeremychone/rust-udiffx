@@ -1,4 +1,4 @@
-use crate::{ApplyChangesStatus, DirectiveStatus, FileChanges, FileDirective, Result, fs_guard};
+use crate::{ApplyChangesStatus, DirectiveStatus, FileChanges, FileDirective, Result, fs_guard, patch_completer};
 use diffy::{Patch, apply};
 use simple_fs::{SPath, ensure_file_dir, read_to_string};
 use std::fs;
@@ -36,7 +36,8 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					fs_guard::check_for_write(&full_path, base_dir)?;
 
 					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
-					let patch_obj = Patch::from_str(&patch_content.content).map_err(crate::Error::diffy_parse_patch)?;
+					let patch_raw = patch_completer::complete(&original_content, &patch_content.content)?;
+					let patch_obj = Patch::from_str(&patch_raw).map_err(crate::Error::diffy_parse_patch)?;
 					let new_content = apply(&original_content, &patch_obj).map_err(crate::Error::diffy_apply_patch)?;
 
 					fs::write(&full_path, new_content)

@@ -47,12 +47,10 @@ pub fn extract_file_changes(input: &str, extract_content: bool) -> Result<(FileC
 						.remove("file_path")
 						.ok_or_else(|| crate::Error::parse_missing_attribute("FILE_NEW", "file_path"))?;
 
-					let mut content = Content::from_raw(elem.content);
-					if content.content.starts_with('\n') {
-						content.content.remove(0);
-					}
-
-					Ok(FileDirective::New { file_path, content })
+					Ok(FileDirective::New {
+						file_path,
+						content: Content::from_raw(elem.content),
+					})
 				}
 				"FILE_PATCH" => {
 					let file_path = attrs
@@ -113,8 +111,9 @@ fn expand_self_closing_tags(mut content: String) -> String {
 			if let Some(end_idx) = content[start_idx..].find('>') {
 				let end_idx = start_idx + end_idx;
 				// Check if the tag is self-closing (ends with />)
-				if content[..end_idx].trim_end().ends_with('/') {
-					let slash_idx = content[..end_idx].rfind('/').unwrap();
+				let trimmed_part = content[..end_idx].trim_end();
+				if trimmed_part.ends_with('/') {
+					let slash_idx = trimmed_part.len() - 1;
 					let expansion = format!("></{tag}>");
 					content.replace_range(slash_idx..end_idx + 1, &expansion);
 					search_pos = slash_idx + expansion.len();

@@ -8,6 +8,7 @@ mod error;
 mod extract;
 mod file_changes;
 mod file_directives;
+mod patch_completer;
 
 pub use applier::*;
 pub use apply_changes_status::*;
