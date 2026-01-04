@@ -7,6 +7,8 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 	let mut lines = patch_raw.lines().peekable();
 	let mut completed_patch = String::new();
 	let orig_lines: Vec<&str> = original_content.lines().collect();
+	let mut total_delta: isize = 0;
+	let mut search_from: usize = 0;
 
 	while let Some(line) = lines.next() {
 		let trimmed = line.trim();
@@ -15,17 +17,23 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 		if trimmed == "@@" {
 			let mut hunk_lines = Vec::new();
 			while let Some(next_line) = lines.peek() {
-				if next_line.trim() == "@@" || next_line.starts_with("@@ -") {
+				let next_trimmed = next_line.trim();
+				if next_trimmed == "@@" || next_trimmed.starts_with("@@ -") {
 					break;
 				}
 				hunk_lines.push(lines.next().unwrap());
 			}
 
 			// Compute line numbers
-			let (old_start, old_count, new_count) = compute_hunk_bounds(&orig_lines, &hunk_lines)?;
-			// For now, we assume new_start is the same as old_start for the first match.
+			let (old_start, old_count, new_count) = compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
+			let new_start = (old_start as isize + total_delta) as usize;
+
+			// Update state for next hunk
+			search_from = old_start + old_count - 1;
+			total_delta += new_count as isize - old_count as isize;
+
 			// Standard Unified Diff: @@ -start,len +start,len @@
-			completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{old_start},{new_count} @@\n"));
+			completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"));
 			for h_line in hunk_lines {
 				completed_patch.push_str(h_line);
 				completed_patch.push('\n');
@@ -41,7 +49,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 
 // region:    --- Support
 
-fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str]) -> Result<(usize, usize, usize)> {
+fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: usize) -> Result<(usize, usize, usize)> {
 	let mut pattern = Vec::new();
 	let mut old_count = 0;
 	let mut new_count = 0;
@@ -68,7 +76,7 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str]) -> Result<(usiz
 
 	// Simple greedy search for the pattern
 	let mut found_idx = None;
-	for i in 0..=orig_lines.len().saturating_sub(pattern.len()) {
+	for i in search_from..=orig_lines.len().saturating_sub(pattern.len()) {
 		let mut matches = true;
 		for (j, p_line) in pattern.iter().enumerate() {
 			if orig_lines[i + j] != *p_line {
