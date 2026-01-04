@@ -24,8 +24,8 @@ unsafe_code = "forbid"
 # unused = { level = "allow", priority = -1 } # For exploratory dev.
 
 [dependencies]
-# -- Async
-tokio = { version = "1", features = ["full"] }
+# -- Tracing
+tracing = "0.1"
 # -- Files
 simple-fs = "0.9"
 # -- Diff & Text
