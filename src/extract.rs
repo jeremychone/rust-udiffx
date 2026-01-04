@@ -47,10 +47,12 @@ pub fn extract_file_changes(input: &str, extract_content: bool) -> Result<(FileC
 						.remove("file_path")
 						.ok_or_else(|| crate::Error::parse_missing_attribute("FILE_NEW", "file_path"))?;
 
-					Ok(FileDirective::New {
-						file_path,
-						content: Content::from_raw(elem.content),
-					})
+					let mut content = Content::from_raw(elem.content);
+					if content.content.starts_with('\n') {
+						content.content.remove(0);
+					}
+
+					Ok(FileDirective::New { file_path, content })
 				}
 				"FILE_PATCH" => {
 					let file_path = attrs
