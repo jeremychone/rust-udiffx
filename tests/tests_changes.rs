@@ -27,6 +27,73 @@ fn test_changes_no_changes() -> Result<()> {
 }
 
 #[test]
+fn test_changes_001() -> Result<()> {
+	// -- Setup & Fixtures
+	let base_dir = test_support::new_out_dir_path("test_changes_001")?;
+	simple_fs::ensure_dir(&base_dir)?;
+
+	let original_file_path = base_dir.join("original.md");
+
+	let initial_content = r###"# Dev Chat
+
+Update this dev chat history with each of you answer with the `## Request: ...` title/section for each ask (concise title)
+
+## Request: Code Improvement Assessment
+
+The current implementation provides a solid foundation for a button explosion effect. To reach production-grade quality, the following improvements are suggested:
+
+- **Canvas Scaling**: Implement `devicePixelRatio` handling to ensure sharp rendering on high-resolution displays.
+- **Animation Control**: Guard the `animate` loop to prevent multiple concurrent `requestAnimationFrame` instances if the logic is expanded.
+- **Resource Management**: Implement a particle pool to reduce GC pressure from constant object instantiation.
+- **Interaction UX**: Transition from a hardcoded `setTimeout` to a state-based reset that triggers when all particles have faded out.
+- **Accessibility**: Add ARIA attributes to handle the temporary disappearance of the primary interaction element.
+"###;
+
+	std::fs::write(&original_file_path, initial_content)?;
+
+	let input = r###"
+<FILE_CHANGES>
+<FILE_PATCH file_path="original.md">
+```md
+@@
+ - **Accessibility**: Add ARIA attributes to handle the temporary disappearance of the primary interaction element.
+
++## Request: Architecture Refactoring
++
++Splitting the JavaScript files is a highly recommended step for maintainability. As the project grows, separating concerns improves readability and simplifies testing:
++
++- **Particle Module**: Move the `Particle` class to a dedicated file to encapsulate particle-specific logic.
++- **Animation Engine**: Extract the core canvas setup and the `requestAnimationFrame` loop.
++- **Application Entry**: Use `js/main.js` strictly for DOM initialization and orchestrating interactions.
++
++This modular structure follows modern development standards and leverages ES module capabilities.
++
+```
+</FILE_PATCH>
+</FILE_CHANGES>
+"###;
+	// -- Exec
+	let (changes, _extruded) = extract_file_changes(input, false)?;
+	let status = apply_file_changes(&base_dir, changes)?;
+
+	// -- Check
+	assert_eq!(status.items.len(), 1, "Should have 1 directive status");
+	assert!(
+		status.items[0].success,
+		"Directive should have succeeded. Error: {:?}",
+		status.items[0].error_msg
+	);
+
+	let final_content = std::fs::read_to_string(original_file_path)?;
+	assert!(final_content.contains("## Request: Architecture Refactoring"));
+	assert!(final_content.contains(
+		"- **Particle Module**: Move the `Particle` class to a dedicated file to encapsulate particle-specific logic."
+	));
+
+	Ok(())
+}
+
+#[test]
 fn test_changes_with_newline_surround() -> Result<()> {
 	// -- Setup & Fixtures
 	let base_dir = test_support::new_out_dir_path("test_changes_with_newline_surround")?;
