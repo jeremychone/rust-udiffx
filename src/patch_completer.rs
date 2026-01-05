@@ -25,7 +25,8 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 			}
 
 			// Compute line numbers
-			let (old_start, old_count, new_count) = compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
+			let (old_start, old_count, new_count, final_hunk_lines) =
+				compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
 			let new_start = (old_start as isize + total_delta) as usize;
 
 			// Update state for next hunk
@@ -34,11 +35,11 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 
 			// Standard Unified Diff: @@ -start,len +start,len @@
 			completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"));
-			for h_line in hunk_lines {
+			for h_line in final_hunk_lines {
 				if h_line.is_empty() {
 					completed_patch.push(' ');
 				} else {
-					completed_patch.push_str(h_line);
+					completed_patch.push_str(&h_line);
 				}
 				completed_patch.push('\n');
 			}
@@ -53,54 +54,86 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 
 // region:    --- Support
 
-fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: usize) -> Result<(usize, usize, usize)> {
-	let mut pattern = Vec::new();
-	let mut old_count = 0;
-	let mut new_count = 0;
-
-	for line in hunk_lines {
-		if line.starts_with(' ') {
-			pattern.push(&line[1..]);
-			old_count += 1;
-			new_count += 1;
-		} else if line.starts_with('-') {
-			pattern.push(&line[1..]);
-			old_count += 1;
-		} else if line.starts_with('+') {
-			new_count += 1;
-		} else if line.trim().is_empty() {
-			pattern.push("");
-			old_count += 1;
-			new_count += 1;
-		}
-		// Skip unexpected prefixes
-	}
-
-	if pattern.is_empty() {
+fn compute_hunk_bounds(
+	orig_lines: &[&str],
+	hunk_lines: &[&str],
+	search_from: usize,
+) -> Result<(usize, usize, usize, Vec<String>)> {
+	// -- Pre-check for pattern existence
+	let has_pattern = hunk_lines.iter().any(|l| !l.starts_with('+'));
+	if !has_pattern {
 		return Err(Error::patch_completion(
 			"No context or removal lines found in hunk to match original file",
 		));
 	}
 
-	// Simple greedy search for the pattern
+	// -- Greedy search for the pattern
 	let mut found_idx = None;
-	for i in search_from..=orig_lines.len().saturating_sub(pattern.len()) {
+	let mut overhang_hl_indices = Vec::new();
+
+	for i in search_from..=orig_lines.len() {
 		let mut matches = true;
-		for (j, p_line) in pattern.iter().enumerate() {
-			if orig_lines[i + j] != *p_line {
+		let mut current_overhang = Vec::new();
+		let mut p_idx = 0;
+
+		for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
+			if hl_line.starts_with('+') {
+				continue;
+			}
+
+			let p_line = if hl_line.starts_with(' ') || hl_line.starts_with('-') {
+				&hl_line[1..]
+			} else {
+				""
+			};
+
+			let target_idx = i + p_idx;
+			if target_idx >= orig_lines.len() {
+				// Allow match beyond EOF only if the pattern line is empty (common LLM sloppiness)
+				if p_line.is_empty() {
+					current_overhang.push(hl_idx);
+				} else {
+					matches = false;
+					break;
+				}
+			} else if orig_lines[target_idx] != p_line {
 				matches = false;
 				break;
 			}
+			p_idx += 1;
 		}
-		if matches {
+
+		if matches && p_idx > 0 {
 			found_idx = Some(i);
+			overhang_hl_indices = current_overhang;
 			break;
 		}
 	}
 
 	let idx = found_idx.ok_or_else(|| Error::patch_completion("Could not find patch context in original file"))?;
 
-	Ok((idx + 1, old_count, new_count))
+	// -- Reconstruct final hunk lines and calculate counts
+	let mut final_hunk_lines = Vec::new();
+	let mut old_count = 0;
+	let mut new_count = 0;
+
+	for (idx, line) in hunk_lines.iter().enumerate() {
+		if overhang_hl_indices.contains(&idx) {
+			continue;
+		}
+		final_hunk_lines.push(line.to_string());
+
+		if line.starts_with('+') {
+			new_count += 1;
+		} else if line.starts_with('-') {
+			old_count += 1;
+		} else if line.starts_with(' ') || line.trim().is_empty() {
+			old_count += 1;
+			new_count += 1;
+		}
+	}
+
+	Ok((idx + 1, old_count, new_count, final_hunk_lines))
 }
 
 // endregion: --- Support
