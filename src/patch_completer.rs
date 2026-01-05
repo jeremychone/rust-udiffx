@@ -35,7 +35,11 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 			// Standard Unified Diff: @@ -start,len +start,len @@
 			completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"));
 			for h_line in hunk_lines {
-				completed_patch.push_str(h_line);
+				if h_line.is_empty() {
+					completed_patch.push(' ');
+				} else {
+					completed_patch.push_str(h_line);
+				}
 				completed_patch.push('\n');
 			}
 		} else {
@@ -64,8 +68,12 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 			old_count += 1;
 		} else if line.starts_with('+') {
 			new_count += 1;
+		} else if line.trim().is_empty() {
+			pattern.push("");
+			old_count += 1;
+			new_count += 1;
 		}
-		// Skip empty lines or unexpected prefixes
+		// Skip unexpected prefixes
 	}
 
 	if pattern.is_empty() {

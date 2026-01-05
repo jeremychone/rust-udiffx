@@ -28,18 +28,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("Found {len} directives in {FILE}",);
 
 	// -- Apply
-	let info = apply_file_changes(&base_dir, file_changes)?;
+	let status = apply_file_changes(&base_dir, file_changes)?;
 
 	// -- Print Result
 	println!("\nApplied changes to: {base_dir}");
-	for dir_info in info.infos {
-		println!(
-			"  - {:>7}: {:<5} {}",
-			dir_info.kind(),
-			dir_info.success(),
-			dir_info.file_path()
-		);
-		if let Some(err) = dir_info.error_msg() {
+	for item in status.items {
+		println!("  - {:>7}: {:<5} {}", item.kind(), item.success(), item.file_path());
+		if let Some(err) = item.error_msg() {
 			println!("   Error: {}", err);
 		}
 	}
