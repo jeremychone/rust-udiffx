@@ -52,6 +52,120 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 	Ok(completed_patch)
 }
 
+// region:    --- Support
+
+fn compute_hunk_bounds(
+	orig_lines: &[&str],
+	hunk_lines: &[&str],
+	search_from: usize,
+) -> Result<(usize, usize, usize, Vec<String>)> {
+	// -- Pre-check for pattern existence
+	let has_pattern = hunk_lines.iter().any(|l| !l.starts_with('+'));
+	if !has_pattern {
+		return Err(Error::patch_completion(
+			"No context or removal lines found in hunk to match original file",
+		));
+	}
+
+	// -- Greedy search for the pattern
+	let mut found_idx = None;
+	let mut overhang_hl_indices = Vec::new();
+	let mut matched_orig_lines: Vec<(usize, String)> = Vec::new(); // (hl_idx, orig_content)
+
+	for i in search_from..=orig_lines.len() {
+		let mut matches = true;
+		let mut current_overhang = Vec::new();
+		let mut current_matches = Vec::new();
+		let mut p_idx = 0;
+
+		for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
+			if hl_line.starts_with('+') {
+				continue;
+			}
+
+			let p_line = if hl_line.starts_with(' ') || hl_line.starts_with('-') {
+				&hl_line[1..]
+			} else {
+				""
+			};
+
+			let target_idx = i + p_idx;
+			if target_idx >= orig_lines.len() {
+				// Allow match beyond EOF only if the pattern line is empty (common LLM sloppiness)
+				if p_line.trim().is_empty() {
+					current_overhang.push(hl_idx);
+				} else {
+					matches = false;
+					break;
+				}
+			} else {
+				let orig_line = orig_lines[target_idx];
+				let p_line_trimmed = p_line.trim();
+
+				// Match logic:
+				// 1. If p_line is effectively empty context, match only if orig_line is also effectively empty.
+				// 2. Otherwise, check if orig_line contains p_line_trimmed (handles partial context/suffixes).
+				let line_match = if p_line_trimmed.is_empty() {
+					orig_line.trim().is_empty()
+				} else {
+					orig_line.contains(p_line_trimmed)
+				};
+
+				if line_match {
+					current_matches.push((hl_idx, orig_line.to_string()));
+				} else {
+					matches = false;
+					break;
+				}
+			}
+			p_idx += 1;
+		}
+
+		if matches && p_idx > 0 {
+			found_idx = Some(i);
+			overhang_hl_indices = current_overhang;
+			matched_orig_lines = current_matches;
+			break;
+		}
+	}
+
+	let idx = found_idx.ok_or_else(|| Error::patch_completion("Could not find patch context in original file"))?;
+
+	// -- Reconstruct final hunk lines and calculate counts
+	let mut final_hunk_lines = Vec::new();
+	let mut old_count = 0;
+	let mut new_count = 0;
+
+	for (idx, line) in hunk_lines.iter().enumerate() {
+		if overhang_hl_indices.contains(&idx) {
+			continue;
+		}
+
+		// If this was a matched context/removal line, use the original file content for the hunk.
+		// This ensures that the generated patch matches the file exactly (needed for diffy).
+		if let Some((_, orig_content)) = matched_orig_lines.iter().find(|(h_idx, _)| *h_idx == idx) {
+			let prefix = if line.starts_with('-') { '-' } else { ' ' };
+			final_hunk_lines.push(format!("{prefix}{orig_content}"));
+
+			if prefix == '-' {
+				old_count += 1;
+			} else {
+				old_count += 1;
+				new_count += 1;
+			}
+		}
+		// If it's an addition line, use it as is
+		else if line.starts_with('+') {
+			final_hunk_lines.push(line.to_string());
+			new_count += 1;
+		}
+	}
+
+	Ok((idx + 1, old_count, new_count, final_hunk_lines))
+}
+
+// endregion: --- Support
+
 // region:    --- Tests
 
 #[cfg(test)]
@@ -111,89 +225,3 @@ mod tests {
 }
 
 // endregion: --- Tests
-
-// region:    --- Support
-
-fn compute_hunk_bounds(
-	orig_lines: &[&str],
-	hunk_lines: &[&str],
-	search_from: usize,
-) -> Result<(usize, usize, usize, Vec<String>)> {
-	// -- Pre-check for pattern existence
-	let has_pattern = hunk_lines.iter().any(|l| !l.starts_with('+'));
-	if !has_pattern {
-		return Err(Error::patch_completion(
-			"No context or removal lines found in hunk to match original file",
-		));
-	}
-
-	// -- Greedy search for the pattern
-	let mut found_idx = None;
-	let mut overhang_hl_indices = Vec::new();
-
-	for i in search_from..=orig_lines.len() {
-		let mut matches = true;
-		let mut current_overhang = Vec::new();
-		let mut p_idx = 0;
-
-		for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
-			if hl_line.starts_with('+') {
-				continue;
-			}
-
-			let p_line = if hl_line.starts_with(' ') || hl_line.starts_with('-') {
-				&hl_line[1..]
-			} else {
-				""
-			};
-
-			let target_idx = i + p_idx;
-			if target_idx >= orig_lines.len() {
-				// Allow match beyond EOF only if the pattern line is empty (common LLM sloppiness)
-				if p_line.is_empty() {
-					current_overhang.push(hl_idx);
-				} else {
-					matches = false;
-					break;
-				}
-			} else if orig_lines[target_idx] != p_line {
-				matches = false;
-				break;
-			}
-			p_idx += 1;
-		}
-
-		if matches && p_idx > 0 {
-			found_idx = Some(i);
-			overhang_hl_indices = current_overhang;
-			break;
-		}
-	}
-
-	let idx = found_idx.ok_or_else(|| Error::patch_completion("Could not find patch context in original file"))?;
-
-	// -- Reconstruct final hunk lines and calculate counts
-	let mut final_hunk_lines = Vec::new();
-	let mut old_count = 0;
-	let mut new_count = 0;
-
-	for (idx, line) in hunk_lines.iter().enumerate() {
-		if overhang_hl_indices.contains(&idx) {
-			continue;
-		}
-		final_hunk_lines.push(line.to_string());
-
-		if line.starts_with('+') {
-			new_count += 1;
-		} else if line.starts_with('-') {
-			old_count += 1;
-		} else if line.starts_with(' ') || line.trim().is_empty() {
-			old_count += 1;
-			new_count += 1;
-		}
-	}
-
-	Ok((idx + 1, old_count, new_count, final_hunk_lines))
-}
-
-// endregion: --- Support
