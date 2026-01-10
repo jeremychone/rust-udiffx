@@ -52,6 +52,66 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 	Ok(completed_patch)
 }
 
+// region:    --- Tests
+
+#[cfg(test)]
+mod tests {
+	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
+
+	use super::*;
+
+	#[test]
+	fn test_patch_completer_complete_simple() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "line 1\nline 2\nline 3\n";
+		let patch = "@@\n line 2\n+line 2.5\n line 3\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -2,2 +2,3 @@"));
+		assert!(completed.contains(" line 2\n+line 2.5\n line 3"));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_patch_completer_complete_partial_suffix() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "This is a long line with some suffix.\nAnother line.\n";
+		// The LLM only provides the suffix as context
+		let patch = "@@\n some suffix.\n+New line after suffix.\n Another line.\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -1,2 +1,3 @@"));
+		assert!(completed.contains(" some suffix.\n+New line after suffix.\n Another line."));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_patch_completer_complete_whitespace_mismatch() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "    Indented line\n";
+		// LLM might not preserve indentation in context lines
+		let patch = "@@\n Indented line\n+    New indented line\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -1,1 +1,2 @@"));
+
+		Ok(())
+	}
+}
+
+// endregion: --- Tests
+
 // region:    --- Support
 
 fn compute_hunk_bounds(
