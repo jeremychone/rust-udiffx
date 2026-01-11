@@ -1,6 +1,6 @@
 [package]
 name = "udiffx"
-version = "0.1.0-alpha.11-WIP"
+version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Parse and apply LLM-optimized unified diff + XML file changes"
@@ -30,6 +30,6 @@ tracing = "0.1"
 simple-fs = "0.9"
 # -- Diff & Text
 diffy = "0.4.2"
-markex = { version = "0.1.0"}
+markex = { version = "0.1.0" }
 # -- Others
 derive_more = { version = "2", features = ["from", "display"] }
