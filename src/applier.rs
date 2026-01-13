@@ -1,10 +1,17 @@
 use crate::{ApplyChangesStatus, DirectiveStatus, FileChanges, FileDirective, Result, fs_guard, patch_completer};
 use diffy::{Patch, apply};
-use simple_fs::{SPath, ensure_file_dir, read_to_string};
+use simple_fs::{SPath, ensure_file_dir, read_to_string, safer_trash_dir, safer_trash_file};
 use std::fs;
 
 /// Executes the file changes defined in `AipFileChanges` relative to `base_dir`.
 pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
+	// -- Safety check: base_dir must be within CWD
+	let cwd = std::env::current_dir().map_err(|err| crate::Error::io_read_file(".", err))?;
+	let cwd_spath = SPath::from_std_path(cwd)?.into_collapsed();
+	if !base_dir.clone().into_collapsed().as_str().starts_with(cwd_spath.as_str()) {
+		return Err(crate::Error::security_violation(base_dir.to_string(), cwd_spath.to_string()).into());
+	}
+
 	let mut items = Vec::new();
 
 	for directive in file_changes {
@@ -63,14 +70,13 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 
 				FileDirective::Delete { file_path } => {
 					let full_path = base_dir.join(&file_path);
-					fs_guard::check_for_write(&full_path, base_dir)?;
 
 					if full_path.exists() {
 						if full_path.is_dir() {
-							fs::remove_dir_all(&full_path)
+							safer_trash_dir(&full_path, ())
 								.map_err(|err| crate::Error::io_delete_dir_all(full_path.to_string(), err))?;
 						} else {
-							fs::remove_file(&full_path)
+							safer_trash_file(&full_path, ())
 								.map_err(|err| crate::Error::io_delete_file(full_path.to_string(), err))?;
 						}
 					} else {

@@ -27,7 +27,7 @@ unsafe_code = "forbid"
 # -- Tracing
 tracing = "0.1"
 # -- Files
-simple-fs = "0.9"
+simple-fs = { version = "0.9.3" }
 # -- Diff & Text
 diffy = "0.4.2"
 markex = { version = "0.1.0" }
