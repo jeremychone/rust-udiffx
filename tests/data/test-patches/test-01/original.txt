@@ -1,0 +1,27 @@
+[package]
+name = "webdev"
+version = "0.2.0-WIP"
+homepage = "https://github.com/jeremychone/rust-webdev"
+description = "Simple local dev web server for localhost development (NOT FOR PROD)"
+repository = "https://github.com/jeremychone/rust-webdev"
+authors = ["Jeremy Chone <jeremy.chone@gmail.com>"]
+keywords = [
+	"web",
+	"localfolder",
+	"development",
+  "localhost"
+]
+categories = ["command-line-utilities"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+warp = "0.3"
+pathdiff = "0.2"
+clap =  {version = "4", features = ["cargo"]}
+futures = "0.3"
+notify = "8"
+notify-debouncer-mini = "0.7"

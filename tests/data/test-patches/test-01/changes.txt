@@ -1,0 +1,44 @@
+
+<FILE_CHANGES>
+
+<FILE_PATCH file_path="original.txt">
+```toml
+@@
+-edition = "2021"
+-
+-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+-
+-[dependencies]
+-tokio = { version = "1", features = ["full"] }
+-warp = "0.3"
+-pathdiff = "0.2"
+-clap =  {version = "4", features = ["cargo"]}
+-futures = "0.3"
+-notify = "8"
+-notify-debouncer-mini = "0.7"
++edition = "2024"
++resolver = "3"
++
++# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
++
++[lints.rust]
++unsafe_code = "forbid"
++# unused = { level = "allow", priority = -1 } # For exploratory dev.
++
++[dependencies]
++# -- Async
++tokio = { version = "1", features = ["full"] }
++futures = "0.3"
++# -- Web
++axum = { version = "0.7", features = ["ws"] }
++tower = "0.5"
++tower-http = { version = "0.6", features = ["fs"] }
++# -- Others
++clap = { version = "4", features = ["cargo"] }
++pathdiff = "0.2"
++notify = "8"
++notify-debouncer-mini = "0.7"
+```
+</FILE_PATCH>
+
+</FILE_CHANGES>

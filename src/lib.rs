@@ -17,4 +17,10 @@ pub use extract::*;
 pub use file_changes::*;
 pub use file_directives::*;
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod for_test {
+	pub use crate::applier::apply_patch;
+	pub use crate::patch_completer::complete;
+}
+
 // endregion: --- Modules

@@ -23,6 +23,9 @@ keywords = [
 unsafe_code = "forbid"
 # unused = { level = "allow", priority = -1 } # For exploratory dev.
 
+[features]
+test-support = []
+
 [dependencies]
 # -- Tracing
 tracing = "0.1"
@@ -33,3 +36,6 @@ diffy = "0.4.2"
 markex = { version = "0.1.0" }
 # -- Others
 derive_more = { version = "2", features = ["from", "display"] }
+
+[dev-dependencies]
+udiffx = { path = ".", features = ["test-support"] }
