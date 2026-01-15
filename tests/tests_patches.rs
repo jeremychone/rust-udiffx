@@ -8,7 +8,7 @@ type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tes
 #[test]
 fn test_patches_test_01() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-01")?;
+	let content = run_test_scenario("test-01-crlf")?;
 
 	// -- Chek
 	assert!(content.contains("edition = \"2024\""));

@@ -4,6 +4,7 @@ use crate::{Error, Result};
 /// If a hunk starts with just `@@` (optionally with whitespace), this function
 /// searches for the context in the original content and computes the line numbers.
 pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
+	let has_trailing_newline = original_content.ends_with('\n') || original_content.is_empty();
 	let mut lines = patch_raw.lines().peekable();
 	let mut completed_patch = String::new();
 	let orig_lines: Vec<&str> = original_content.lines().collect();
@@ -26,7 +27,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 
 			// Compute line numbers
 			let (old_start, old_count, new_count, final_hunk_lines) =
-				compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
+				compute_hunk_bounds(&orig_lines, &hunk_lines, search_from, has_trailing_newline)?;
 			let new_start = (old_start as isize + total_delta) as usize;
 
 			// Update state for next hunk
@@ -58,6 +59,7 @@ fn compute_hunk_bounds(
 	orig_lines: &[&str],
 	hunk_lines: &[&str],
 	search_from: usize,
+	has_trailing_newline: bool,
 ) -> Result<(usize, usize, usize, Vec<String>)> {
 	// -- Pre-check for pattern existence
 	let has_pattern = hunk_lines.iter().any(|l| !l.starts_with('+'));
@@ -102,13 +104,11 @@ fn compute_hunk_bounds(
 				let orig_line = orig_lines[target_idx];
 				let p_line_trimmed = p_line.trim();
 
-				// Match logic:
-				// 1. If p_line is effectively empty context, match only if orig_line is also effectively empty.
-				// 2. Otherwise, check if orig_line contains p_line_trimmed (handles partial context/suffixes).
+				// Resilient match logic:
 				let line_match = if p_line_trimmed.is_empty() {
 					orig_line.trim().is_empty()
 				} else {
-					orig_line.contains(p_line_trimmed)
+					orig_line.trim() == p_line_trimmed || orig_line.contains(p_line_trimmed) || p_line_trimmed.contains(orig_line.trim())
 				};
 
 				if line_match {
@@ -136,16 +136,24 @@ fn compute_hunk_bounds(
 	let mut old_count = 0;
 	let mut new_count = 0;
 
-	for (idx, line) in hunk_lines.iter().enumerate() {
-		if overhang_hl_indices.contains(&idx) {
+	let mut current_orig_idx = idx;
+	let reached_eof = (idx + matched_orig_lines.len()) == orig_lines.len();
+
+	for (hl_idx, line) in hunk_lines.iter().enumerate() {
+		if overhang_hl_indices.contains(&hl_idx) {
 			continue;
 		}
 
 		// If this was a matched context/removal line, use the original file content for the hunk.
 		// This ensures that the generated patch matches the file exactly (needed for diffy).
-		if let Some((_, orig_content)) = matched_orig_lines.iter().find(|(h_idx, _)| *h_idx == idx) {
+		if let Some((_, orig_content)) = matched_orig_lines.iter().find(|(h_idx, _)| *h_idx == hl_idx) {
 			let prefix = if line.starts_with('-') { '-' } else { ' ' };
 			final_hunk_lines.push(format!("{prefix}{orig_content}"));
+
+			// Handle EOF "No newline" marker for source lines
+			if reached_eof && !has_trailing_newline && current_orig_idx == orig_lines.len() - 1 {
+				final_hunk_lines.push("\\ No newline at end of file".to_string());
+			}
 
 			if prefix == '-' {
 				old_count += 1;
@@ -153,6 +161,8 @@ fn compute_hunk_bounds(
 				old_count += 1;
 				new_count += 1;
 			}
+
+			current_orig_idx += 1;
 		}
 		// If it's an addition line, use it as is
 		else if line.starts_with('+') {
