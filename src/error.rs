@@ -18,6 +18,8 @@ pub enum Error {
 	// -- Apply / Operations
 	#[display("Path not found for {op}: {path}")]
 	ApplyPathNotFound { op: String, path: String },
+	#[display("No changes applied to '{file_path}'")]
+	ApplyNoChanges { file_path: String },
 
 	// -- Security / Guard
 	#[display("Security violation, target '{target}' is outside base dir '{base_dir}'")]
@@ -85,6 +87,12 @@ impl Error {
 		Self::ApplyPathNotFound {
 			op: op.into(),
 			path: path.into(),
+		}
+	}
+
+	pub fn apply_no_changes(file_path: impl Into<String>) -> Self {
+		Self::ApplyNoChanges {
+			file_path: file_path.into(),
 		}
 	}
 

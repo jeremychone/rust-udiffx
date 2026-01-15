@@ -33,6 +33,10 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					ensure_file_dir(&full_path).map_err(crate::Error::simple_fs)?;
 
 					if full_path.exists() {
+						let existing_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
+						if existing_content == content.content {
+							return Err(crate::Error::apply_no_changes(file_path).into());
+						}
 						fs::write(&full_path, &content.content)
 							.map_err(|err| crate::Error::io_write_file(full_path.to_string(), err))?;
 					} else {
@@ -51,6 +55,10 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 
 					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
 					let new_content = apply_patch(&original_content, &patch_content.content)?;
+
+					if new_content == original_content {
+						return Err(crate::Error::apply_no_changes(file_path).into());
+					}
 
 					fs::write(&full_path, new_content)
 						.map_err(|err| crate::Error::io_write_file(full_path.to_string(), err))?;
