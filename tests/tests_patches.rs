@@ -10,9 +10,21 @@ fn test_patches_test_01() -> Result<()> {
 	// -- Exec
 	let content = run_test_scenario("test-01-crlf")?;
 
-	// -- Chek
+	// -- Check
 	assert!(content.contains("edition = \"2024\""));
 	assert!(content.contains("resolver = \"3\""));
+
+	Ok(())
+}
+
+#[test]
+fn test_patches_test_02() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-02-append")?;
+
+	// -- Check
+	assert!(content.contains("edition = \"2024\""));
+	println!("->> \n{content}");
 
 	Ok(())
 }
