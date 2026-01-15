@@ -1,6 +1,7 @@
 <FILE_CHANGES>
 <FILE_PATCH file_path="original.txt">
 @@
++
 +line 3
 </FILE_PATCH>
 </FILE_CHANGES>

@@ -23,8 +23,8 @@ fn test_patches_test_02() -> Result<()> {
 	let content = run_test_scenario("test-02-append")?;
 
 	// -- Check
-	assert!(content.contains("edition = \"2024\""));
 	println!("->> \n{content}");
+	assert!(content.contains("\n\nline 3"));
 
 	Ok(())
 }

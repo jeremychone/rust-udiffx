@@ -62,11 +62,13 @@ fn compute_hunk_bounds(
 	has_trailing_newline: bool,
 ) -> Result<(usize, usize, usize, Vec<String>)> {
 	// -- Pre-check for pattern existence
-	let has_pattern = hunk_lines.iter().any(|l| !l.starts_with('+'));
-	if !has_pattern {
-		return Err(Error::patch_completion(
-			"No context or removal lines found in hunk to match original file",
-		));
+	let context_lines_count = hunk_lines.iter().filter(|l| !l.starts_with('+')).count();
+
+	// -- If no context/removal lines, assume append to end
+	if context_lines_count == 0 {
+		let added_count = hunk_lines.len();
+		let final_hunk_lines = hunk_lines.iter().map(|s| s.to_string()).collect();
+		return Ok((orig_lines.len() + 1, 0, added_count, final_hunk_lines));
 	}
 
 	// -- Greedy search for the pattern
@@ -108,7 +110,9 @@ fn compute_hunk_bounds(
 				let line_match = if p_line_trimmed.is_empty() {
 					orig_line.trim().is_empty()
 				} else {
-					orig_line.trim() == p_line_trimmed || orig_line.contains(p_line_trimmed) || p_line_trimmed.contains(orig_line.trim())
+					orig_line.trim() == p_line_trimmed
+						|| orig_line.contains(p_line_trimmed)
+						|| p_line_trimmed.contains(orig_line.trim())
 				};
 
 				if line_match {
