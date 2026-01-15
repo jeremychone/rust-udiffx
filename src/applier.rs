@@ -8,7 +8,14 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 	// -- Safety check: base_dir must be within CWD
 	let cwd = std::env::current_dir().map_err(|err| crate::Error::io_read_file(".", err))?;
 	let cwd_spath = SPath::from_std_path(cwd)?.into_collapsed();
-	if !base_dir.clone().into_collapsed().as_str().starts_with(cwd_spath.as_str()) {
+
+	let base_dir = if base_dir.is_absolute() {
+		base_dir.clone().into_collapsed()
+	} else {
+		cwd_spath.join(base_dir).into_collapsed()
+	};
+
+	if !base_dir.as_str().starts_with(cwd_spath.as_str()) {
 		return Err(crate::Error::security_violation(base_dir.to_string(), cwd_spath.to_string()).into());
 	}
 
@@ -21,7 +28,7 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 			match directive {
 				FileDirective::New { file_path, content } => {
 					let full_path = base_dir.join(&file_path);
-					fs_guard::check_for_write(&full_path, base_dir)?;
+					fs_guard::check_for_write(&full_path, &base_dir)?;
 
 					ensure_file_dir(&full_path).map_err(crate::Error::simple_fs)?;
 
@@ -39,8 +46,8 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					content: patch_content,
 				} => {
 					let full_path = base_dir.join(&file_path);
-					fs_guard::check_for_read(&full_path, base_dir)?;
-					fs_guard::check_for_write(&full_path, base_dir)?;
+					fs_guard::check_for_read(&full_path, &base_dir)?;
+					fs_guard::check_for_write(&full_path, &base_dir)?;
 
 					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
 					let new_content = apply_patch(&original_content, &patch_content.content)?;
@@ -53,8 +60,8 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					let full_from = base_dir.join(&from_path);
 					let full_to = base_dir.join(&to_path);
 
-					fs_guard::check_for_read(&full_from, base_dir)?;
-					fs_guard::check_for_write(&full_to, base_dir)?;
+					fs_guard::check_for_read(&full_from, &base_dir)?;
+					fs_guard::check_for_write(&full_to, &base_dir)?;
 
 					if full_from.exists() {
 						ensure_file_dir(&full_to).map_err(crate::Error::simple_fs)?;

@@ -23,7 +23,6 @@ fn test_patches_test_02() -> Result<()> {
 	let content = run_test_scenario("test-02-append")?;
 
 	// -- Check
-	println!("->> \n{content}");
 	assert!(content.contains("\n\nline 3"));
 
 	Ok(())
