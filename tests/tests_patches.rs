@@ -32,13 +32,23 @@ fn test_patches_test_02() -> Result<()> {
 #[test]
 fn test_patches_test_03() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-03-multi-hunks")?;
+	let content = run_test_scenario("test-03-no-matching-empty-line")?;
 
 	// -- Check
 	assert!(
 		content.contains("init_profiles_if_missing"),
 		"should contain 'init_profiles_if_missing'"
 	);
+
+	Ok(())
+}
+
+#[test]
+fn test_patches_test_04() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-04-no-end-line")?;
+
+	// -- Check
 
 	Ok(())
 }
