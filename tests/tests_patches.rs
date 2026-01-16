@@ -49,6 +49,7 @@ fn test_patches_test_04() -> Result<()> {
 	let content = run_test_scenario("test-04-no-end-line")?;
 
 	// -- Check
+	println!("->> {content}");
 
 	Ok(())
 }
