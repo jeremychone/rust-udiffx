@@ -26,11 +26,11 @@ pub enum Error {
 	SecurityViolation { target: String, base_dir: String },
 
 	// -- diffy
-	#[display("diffy parse patch error: {cause}")]
-	DiffyParsePatch { cause: String },
+	#[display("diffy parse patch error for '{path}': {cause}\nPatch:\n{patch}")]
+	DiffyParsePatch { path: String, cause: String, patch: String },
 
-	#[display("diffy apply patch error: {cause}")]
-	DiffyApplyPatch { cause: String },
+	#[display("diffy apply patch error for '{path}': {cause}\nPatch:\n{patch}")]
+	DiffyApplyPatch { path: String, cause: String, patch: String },
 
 	#[display("patch completion error: {cause}")]
 	PatchCompletion { cause: String },
@@ -154,12 +154,20 @@ impl Error {
 		Self::SimpleFs { cause: err.to_string() }
 	}
 
-	pub fn diffy_parse_patch(err: impl std::error::Error) -> Self {
-		Self::DiffyParsePatch { cause: err.to_string() }
+	pub fn diffy_parse_patch(path: impl Into<String>, err: impl std::error::Error, patch: impl Into<String>) -> Self {
+		Self::DiffyParsePatch {
+			path: path.into(),
+			cause: err.to_string(),
+			patch: patch.into(),
+		}
 	}
 
-	pub fn diffy_apply_patch(err: impl std::error::Error) -> Self {
-		Self::DiffyApplyPatch { cause: err.to_string() }
+	pub fn diffy_apply_patch(path: impl Into<String>, err: impl std::error::Error, patch: impl Into<String>) -> Self {
+		Self::DiffyApplyPatch {
+			path: path.into(),
+			cause: err.to_string(),
+			patch: patch.into(),
+		}
 	}
 
 	pub fn patch_completion(cause: impl Into<String>) -> Self {
@@ -186,18 +194,6 @@ impl From<std::io::Error> for Error {
 impl From<simple_fs::Error> for Error {
 	fn from(err: simple_fs::Error) -> Self {
 		Self::simple_fs(err)
-	}
-}
-
-impl From<diffy::ParsePatchError> for Error {
-	fn from(err: diffy::ParsePatchError) -> Self {
-		Self::diffy_parse_patch(err)
-	}
-}
-
-impl From<diffy::ApplyError> for Error {
-	fn from(err: diffy::ApplyError) -> Self {
-		Self::diffy_apply_patch(err)
 	}
 }
 

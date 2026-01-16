@@ -53,8 +53,10 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					fs_guard::check_for_read(&full_path, &base_dir)?;
 					fs_guard::check_for_write(&full_path, &base_dir)?;
 
-					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
-					let new_content = apply_patch(&original_content, &patch_content.content)?;
+					let original_content =
+						read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
+					let new_content =
+						apply_patch(&file_path, &original_content, &patch_content.content)?;
 
 					if new_content == original_content {
 						return Err(crate::Error::apply_no_changes(file_path).into());
@@ -116,9 +118,13 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 }
 
 /// Applies a patch content to an original string, handling potential patch completion.
-pub fn apply_patch(original: &str, patch_raw: &str) -> Result<String> {
+pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<String> {
 	let completed_patch = patch_completer::complete(original, patch_raw)?;
-	let patch_obj = Patch::from_str(&completed_patch).map_err(crate::Error::diffy_parse_patch)?;
-	let new_content = apply(original, &patch_obj).map_err(crate::Error::diffy_apply_patch)?;
+	let patch_obj = Patch::from_str(&completed_patch).map_err(|err| {
+		crate::Error::diffy_parse_patch(file_path, err, &completed_patch)
+	})?;
+	let new_content = apply(original, &patch_obj).map_err(|err| {
+		crate::Error::diffy_apply_patch(file_path, err, &completed_patch)
+	})?;
 	Ok(new_content)
 }

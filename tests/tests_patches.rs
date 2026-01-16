@@ -1,5 +1,6 @@
 //! Integration tests that run against scenarios in tests/data/test-files/
 
+use simple_fs::SPath;
 use udiffx::for_test::apply_patch;
 use udiffx::{FileDirective, extract_file_changes};
 
@@ -42,9 +43,11 @@ fn test_patches_test_03() -> Result<()> {
 // region:    --- Support
 
 fn run_test_scenario(folder: &str) -> Result<String> {
-	let folder_path = format!("tests/data/test-patches/{folder}");
-	let original = std::fs::read_to_string(format!("{folder_path}/original.txt"))?;
-	let changes_str = std::fs::read_to_string(format!("{folder_path}/changes.txt"))?;
+	let folder_path = SPath::new(format!("tests/data/test-patches/{folder}"));
+	let original_path = folder_path.join("original.txt");
+	let original = std::fs::read_to_string(&original_path)?;
+	let change_path = folder_path.join("changes.txt");
+	let changes_str = std::fs::read_to_string(change_path)?;
 
 	let (changes, _) = extract_file_changes(&changes_str, false)?;
 	let mut content = original;
@@ -54,7 +57,7 @@ fn run_test_scenario(folder: &str) -> Result<String> {
 			FileDirective::Patch {
 				content: patch_content, ..
 			} => {
-				content = apply_patch(&content, &patch_content.content)?;
+				content = apply_patch(original_path.as_str(), &content, &patch_content.content)?;
 			}
 			_ => return Err("Only FILE_PATCH is supported in this in-memory test for now".into()),
 		}
