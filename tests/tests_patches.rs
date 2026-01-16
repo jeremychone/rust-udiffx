@@ -35,6 +35,10 @@ fn test_patches_test_03() -> Result<()> {
 	let content = run_test_scenario("test-03-multi-hunks")?;
 
 	// -- Check
+	assert!(
+		content.contains("init_profiles_if_missing"),
+		"should contain 'init_profiles_if_missing'"
+	);
 
 	Ok(())
 }

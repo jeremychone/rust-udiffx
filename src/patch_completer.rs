@@ -74,60 +74,61 @@ fn compute_hunk_bounds(
 	// -- Greedy search for the pattern
 	let mut found_idx = None;
 	let mut overhang_hl_indices = Vec::new();
+	let mut skipped_hl_indices = Vec::new(); // Indices of hunk lines that don't exist in original
 	let mut matched_orig_lines: Vec<(usize, String)> = Vec::new(); // (hl_idx, orig_content)
 
 	for i in search_from..=orig_lines.len() {
 		let mut matches = true;
 		let mut current_overhang = Vec::new();
+		let mut current_skipped = Vec::new();
 		let mut current_matches = Vec::new();
-		let mut p_idx = 0;
+		let mut orig_off = 0; // offset in orig_lines from i
 
 		for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
 			if hl_line.starts_with('+') {
 				continue;
 			}
 
-			let p_line = if hl_line.starts_with(' ') || hl_line.starts_with('-') {
-				&hl_line[1..]
-			} else {
-				""
-			};
+			let p_line = if hl_line.len() > 1 { &hl_line[1..] } else { "" };
+			let p_line_trimmed = p_line.trim();
 
-			let target_idx = i + p_idx;
-			if target_idx >= orig_lines.len() {
-				// Allow match beyond EOF only if the pattern line is empty (common LLM sloppiness)
-				if p_line.trim().is_empty() {
-					current_overhang.push(hl_idx);
+			let target_idx = i + orig_off;
+
+			if p_line_trimmed.is_empty() {
+				// If the patch has a blank line...
+				if target_idx < orig_lines.len() && orig_lines[target_idx].trim().is_empty() {
+					// ... and original has a blank line: Match.
+					current_matches.push((hl_idx, orig_lines[target_idx].to_string()));
+					orig_off += 1;
 				} else {
-					matches = false;
-					break;
+					// ... and original doesn't have a blank line: Skip this hunk line (resilience).
+					current_skipped.push(hl_idx);
 				}
-			} else {
+			} else if target_idx < orig_lines.len() {
 				let orig_line = orig_lines[target_idx];
-				let p_line_trimmed = p_line.trim();
 
 				// Resilient match logic:
-				let line_match = if p_line_trimmed.is_empty() {
-					orig_line.trim().is_empty()
-				} else {
-					orig_line.trim() == p_line_trimmed
-						|| orig_line.contains(p_line_trimmed)
-						|| p_line_trimmed.contains(orig_line.trim())
-				};
+				let line_match = orig_line.trim() == p_line_trimmed
+					|| orig_line.contains(p_line_trimmed)
+					|| p_line_trimmed.contains(orig_line.trim());
 
 				if line_match {
 					current_matches.push((hl_idx, orig_line.to_string()));
+					orig_off += 1;
 				} else {
 					matches = false;
 					break;
 				}
+			} else {
+				// Pattern goes beyond EOF: only allow if it's trailing whitespace/empty context
+				current_overhang.push(hl_idx);
 			}
-			p_idx += 1;
 		}
 
-		if matches && p_idx > 0 {
+		if matches && (!current_matches.is_empty() || !current_overhang.is_empty()) {
 			found_idx = Some(i);
 			overhang_hl_indices = current_overhang;
+			skipped_hl_indices = current_skipped;
 			matched_orig_lines = current_matches;
 			break;
 		}
@@ -156,7 +157,7 @@ fn compute_hunk_bounds(
 	let reached_eof = (idx + matched_orig_lines.len()) == orig_lines.len();
 
 	for (hl_idx, line) in hunk_lines.iter().enumerate() {
-		if overhang_hl_indices.contains(&hl_idx) {
+		if overhang_hl_indices.contains(&hl_idx) || skipped_hl_indices.contains(&hl_idx) {
 			continue;
 		}
 
