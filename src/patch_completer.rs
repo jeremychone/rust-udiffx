@@ -133,7 +133,19 @@ fn compute_hunk_bounds(
 		}
 	}
 
-	let idx = found_idx.ok_or_else(|| Error::patch_completion("Could not find patch context in original file"))?;
+	let idx = found_idx.ok_or_else(|| {
+		let context_pattern: Vec<String> = hunk_lines
+			.iter()
+			.filter(|l| l.starts_with(' ') || l.starts_with('-'))
+			.map(|l| if l.is_empty() { "" } else { &l[1..] }.to_string())
+			.collect();
+
+		Error::patch_completion(format!(
+			"Could not find patch context in original file (starting search from line {})\nContext lines:\n{}",
+			search_from + 1,
+			context_pattern.join("\n")
+		))
+	})?;
 
 	// -- Reconstruct final hunk lines and calculate counts
 	let mut final_hunk_lines = Vec::new();

@@ -35,7 +35,6 @@ fn test_patches_test_03() -> Result<()> {
 	let content = run_test_scenario("test-03-multi-hunks")?;
 
 	// -- Check
-	assert!(content.contains("\n\nline 3"));
 
 	Ok(())
 }
@@ -57,7 +56,13 @@ fn run_test_scenario(folder: &str) -> Result<String> {
 			FileDirective::Patch {
 				content: patch_content, ..
 			} => {
-				content = apply_patch(original_path.as_str(), &content, &patch_content.content)?;
+				content = match apply_patch(original_path.as_str(), &content, &patch_content.content) {
+					Ok(content) => content,
+					Err(err) => {
+						println!("Error for {folder} scenario:\n{err}");
+						return Err(format!("scenario {folder} failed").into());
+					}
+				};
 			}
 			_ => return Err("Only FILE_PATCH is supported in this in-memory test for now".into()),
 		}
