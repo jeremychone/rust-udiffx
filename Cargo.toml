@@ -39,3 +39,4 @@ derive_more = { version = "2", features = ["from", "display"] }
 
 [dev-dependencies]
 udiffx = { path = ".", features = ["test-support"] }
+assertables = "9"

@@ -1,5 +1,6 @@
 //! Integration tests that run against scenarios in tests/data/test-files/
 
+use assertables::assert_contains;
 use simple_fs::SPath;
 use udiffx::for_test::apply_patch;
 use udiffx::{FileDirective, extract_file_changes};
@@ -12,8 +13,8 @@ fn test_patches_test_01() -> Result<()> {
 	let content = run_test_scenario("test-01-crlf")?;
 
 	// -- Check
-	assert!(content.contains("edition = \"2024\""));
-	assert!(content.contains("resolver = \"3\""));
+	assert_contains!(content, "edition = \"2024\"");
+	assert_contains!(content, "resolver = \"3\"");
 
 	Ok(())
 }
@@ -35,10 +36,7 @@ fn test_patches_test_03() -> Result<()> {
 	let content = run_test_scenario("test-03-no-matching-empty-line")?;
 
 	// -- Check
-	assert!(
-		content.contains("init_profiles_if_missing"),
-		"should contain 'init_profiles_if_missing'"
-	);
+	assert_contains!(content, "init_profiles_if_missing");
 
 	Ok(())
 }
@@ -49,7 +47,7 @@ fn test_patches_test_04() -> Result<()> {
 	let content = run_test_scenario("test-04-no-end-line")?;
 
 	// -- Check
-	println!("->> {content}");
+	assert_contains!(content, " Improve Patch Completer");
 
 	Ok(())
 }

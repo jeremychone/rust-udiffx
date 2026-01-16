@@ -4,7 +4,6 @@ use crate::{Error, Result};
 /// If a hunk starts with just `@@` (optionally with whitespace), this function
 /// searches for the context in the original content and computes the line numbers.
 pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
-	let has_trailing_newline = original_content.ends_with('\n') || original_content.is_empty();
 	let mut lines = patch_raw.lines().peekable();
 	let mut completed_patch = String::new();
 	let orig_lines: Vec<&str> = original_content.lines().collect();
@@ -27,7 +26,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 
 			// Compute line numbers
 			let (old_start, old_count, new_count, final_hunk_lines) =
-				compute_hunk_bounds(&orig_lines, &hunk_lines, search_from, has_trailing_newline)?;
+				compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
 			let new_start = (old_start as isize + total_delta) as usize;
 
 			// Update state for next hunk
@@ -59,7 +58,6 @@ fn compute_hunk_bounds(
 	orig_lines: &[&str],
 	hunk_lines: &[&str],
 	search_from: usize,
-	has_trailing_newline: bool,
 ) -> Result<(usize, usize, usize, Vec<String>)> {
 	// -- Pre-check for pattern existence
 	let context_lines_count = hunk_lines.iter().filter(|l| !l.starts_with('+')).count();
@@ -153,9 +151,6 @@ fn compute_hunk_bounds(
 	let mut old_count = 0;
 	let mut new_count = 0;
 
-	let mut current_orig_idx = idx;
-	let reached_eof = (idx + matched_orig_lines.len()) == orig_lines.len();
-
 	for (hl_idx, line) in hunk_lines.iter().enumerate() {
 		if overhang_hl_indices.contains(&hl_idx) || skipped_hl_indices.contains(&hl_idx) {
 			continue;
@@ -167,19 +162,12 @@ fn compute_hunk_bounds(
 			let prefix = if line.starts_with('-') { '-' } else { ' ' };
 			final_hunk_lines.push(format!("{prefix}{orig_content}"));
 
-			// Handle EOF "No newline" marker for source lines
-			if reached_eof && !has_trailing_newline && current_orig_idx == orig_lines.len() - 1 {
-				final_hunk_lines.push("\\ No newline at end of file".to_string());
-			}
-
 			if prefix == '-' {
 				old_count += 1;
 			} else {
 				old_count += 1;
 				new_count += 1;
 			}
-
-			current_orig_idx += 1;
 		}
 		// If it's an addition line, use it as is
 		else if line.starts_with('+') {
