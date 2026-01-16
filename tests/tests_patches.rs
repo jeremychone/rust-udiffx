@@ -28,6 +28,17 @@ fn test_patches_test_02() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_03() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-03-multi-hunks")?;
+
+	// -- Check
+	assert!(content.contains("\n\nline 3"));
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str) -> Result<String> {

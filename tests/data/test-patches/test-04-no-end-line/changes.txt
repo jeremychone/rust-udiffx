@@ -1,0 +1,27 @@
+<FILE_CHANGES>
+
+<FILE_PATCH file_path=".aipack/.prompt/pro@coder/dev/chat/dev-chat.md">
+```md
+@@
+ # Dev Chat
+
+ For each user request, add a new `## Request: _user_ask_title_concise_` with the answer below (concise title). Preserve this instruction as is.
++
++## Request: Improve Patch Completer Error Message
++
++The instruction is clear. The requirement is to enhance the error reporting in `patch_completer.rs` when context matching fails. Instead of a generic message, the error will now list the specific lines it was searching for, stripped of their unified diff prefixes (space or `-`), and separated by `----`.
++
++### Implementation Plan
++
++- Modify `compute_hunk_bounds` in `src/patch_completer.rs`.
++- When `found_idx` is `None` (match failed):
++    - Collect all lines from `hunk_lines` that do not start with `+`.
++    - For each collected line, remove the first character (the diff marker).
++    - Join these cleaned lines using `\n----\n` as the separator.
++    - Pass this formatted string into `Error::patch_completion`.
++
++This will allow developers to quickly copy segments of the failing patch and search for them in the target file to identify why the match failed (e.g., drift, whitespace issues, or incorrect context).
+```
+</FILE_PATCH>
+
+</FILE_CHANGES>

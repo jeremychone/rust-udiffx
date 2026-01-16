@@ -1,0 +1,30 @@
+
+<FILE_CHANGES>
+
+<FILE_PATCH file_path="original.txt">
+```rs
+@@
+ use crate::support::jsons;
+ use crate::{Error, Result};
++use lazy_regex::regex;
+ use serde::{Deserialize, Serialize};
+@@
+ pub fn toggle_profile() -> Result<()> {
+ 	let home = home::home_dir().ok_or("Could not find home directory")?;
+
++	// -- Init if missing
++	init_profiles_if_missing()?;
++
+ 	let config_dir = SPath::from_std_path(&home)?.join(".config/jc-zed-tasks");
+@@
+ 	println!("Switched to profile: {next_profile_name}");
+ 	touch_tasks_json()?;
+
+ 	Ok(())
+ }
++
++// region:    --- Support
++
+```
+</FILE_PATCH>
+</FILE_CHANGES>
