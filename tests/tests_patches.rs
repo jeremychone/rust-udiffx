@@ -52,6 +52,18 @@ fn test_patches_test_04() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_05() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-05-missplaced")?;
+
+	// -- Check
+	println!("->> content:\n{content}");
+	// assert_contains!(content, " Improve Patch Completer");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str) -> Result<String> {

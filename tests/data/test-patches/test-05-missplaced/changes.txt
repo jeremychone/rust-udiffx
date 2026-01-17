@@ -1,0 +1,26 @@
+
+<FILE_CHANGES>
+<FILE_PATCH file_path=".aipack/.prompt/pro@coder/dev/chat/dev-chat.md">
+```md
+@@
+ 3. **Atomic Failure**: Ensure that if any prerequisite (Zed settings or Alacritty settings) is missing a required key, the initialization fails completely before writing any new configuration files to `~/.config/jc-zed-tasks/`.
++
++## Request: Ensure Alacritty config inclusion in profiles
++
++The user pointed out that `alacritty_config` was not appearing in the generated `default` and `demo` profiles, and emphasized that the tool should not default to a value like 16 but rather fail if the configuration cannot be resolved.
++
++### Proposed Fix
++
++- **Strict Dependency Check**:
++  - The `init_profiles_if_missing` function will be updated to explicitly verify the presence of Alacritty configuration.
++  - If `alacritty::load_settings()` fails or the required font size path is missing, the process will terminate with an error instead of using a default value.
++
++- **Explicit Profile Population**:
++  - Ensure that the `alacritty_config` vector is explicitly and correctly populated for every profile created during the initialization phase.
++  - The `default` profile will capture the current system state, while the `demo` profile will use a specifically defined value (e.g., 20).
++
++- **Configuration Integrity**:
++  - No configuration file will be written to `~/.config/jc-zed-tasks/` until all required values from both Zed and Alacritty are successfully retrieved and validated.
+```
+</FILE_PATCH>
+</FILE_CHANGES>
