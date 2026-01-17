@@ -104,11 +104,16 @@ fn compute_hunk_bounds(
 				}
 			} else if target_idx < orig_lines.len() {
 				let orig_line = orig_lines[target_idx];
+				let orig_trimmed = orig_line.trim();
 
 				// Resilient match logic:
-				let line_match = orig_line.trim() == p_line_trimmed
-					|| orig_line.contains(p_line_trimmed)
-					|| p_line_trimmed.contains(orig_line.trim());
+				let line_match = if orig_trimmed.is_empty() || p_line_trimmed.is_empty() {
+					orig_trimmed == p_line_trimmed
+				} else {
+					orig_trimmed == p_line_trimmed
+						|| orig_trimmed.contains(p_line_trimmed)
+						|| p_line_trimmed.contains(orig_trimmed)
+				};
 
 				if line_match {
 					current_matches.push((hl_idx, orig_line.to_string()));
