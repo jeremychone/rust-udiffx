@@ -50,11 +50,11 @@ impl Content {
 			let remaining = &trimmed_start[f_idx + 1..];
 			let trimmed_end = remaining.trim_end();
 
-			if trimmed_end.ends_with("```")
-				&& let Some(l_idx) = trimmed_end.rfind('\n')
-			{
-				let last_line = &trimmed_end[l_idx + 1..];
-				if last_line.trim_start().starts_with("```") {
+			if trimmed_end.ends_with("```") {
+				if let Some(l_idx) = trimmed_end.rfind('\n')
+					&& let last_line = &trimmed_end[l_idx + 1..]
+					&& last_line.trim_start().starts_with("```")
+				{
 					let end_fence = last_line.to_string();
 					let mut content = remaining[..l_idx + 1].to_string();
 
@@ -71,6 +71,14 @@ impl Content {
 							end: end_fence,
 						}),
 					};
+				} else if trimmed_end.trim_start().starts_with("```") {
+					return Self {
+						content: String::new(),
+						code_fence: Some(CodeFence {
+							start: start_fence,
+							end: trimmed_end.to_string(),
+						}),
+					};
 				}
 			}
 		}
@@ -81,3 +89,46 @@ impl Content {
 		}
 	}
 }
+
+// region:    --- Tests
+
+#[cfg(test)]
+mod tests {
+	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
+
+	use super::*;
+
+	#[test]
+	fn test_file_directives_content_from_raw_empty_fence() -> Result<()> {
+		// -- Setup & Fixtures
+		let raw = "\n```\n```".to_string();
+
+		// -- Exec
+		let content = Content::from_raw(raw);
+
+		// -- Check
+		assert_eq!(content.content, "");
+		assert!(content.code_fence.is_some());
+		assert_eq!(content.code_fence.as_ref().unwrap().start, "```");
+		assert_eq!(content.code_fence.as_ref().unwrap().end, "```");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_file_directives_content_from_raw_fence_with_whitespace() -> Result<()> {
+		// -- Setup & Fixtures
+		let raw = "\n```\n  \n```".to_string();
+
+		// -- Exec
+		let content = Content::from_raw(raw);
+
+		// -- Check
+		assert_eq!(content.content, "  \n");
+		assert!(content.code_fence.is_some());
+
+		Ok(())
+	}
+}
+
+// endregion: --- Tests
