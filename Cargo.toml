@@ -25,6 +25,7 @@ unsafe_code = "forbid"
 
 [features]
 test-support = []
+prompt = []
 
 [dependencies]
 # -- Tracing
