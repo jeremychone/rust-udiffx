@@ -2,10 +2,10 @@ use crate::{Content, FileChanges, FileDirective, Result};
 use markex::tag;
 
 /// Extracts the first `FILE_CHANGES` block from the input string.
-pub fn extract_file_changes(input: &str, extract_content: bool) -> Result<(FileChanges, Option<String>)> {
-	let parts = tag::extract(input, &["FILE_CHANGES"], extract_content);
+pub fn extract_file_changes(input: &str, extrude_other_content: bool) -> Result<(FileChanges, Option<String>)> {
+	let parts = tag::extract(input, &["FILE_CHANGES"], extrude_other_content);
 
-	let (tag_elems, extruded) = if extract_content {
+	let (tag_elems, extruded) = if extrude_other_content {
 		let (elems, s) = parts.into_with_extrude_content();
 		(elems, Some(s))
 	} else {

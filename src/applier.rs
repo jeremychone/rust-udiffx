@@ -4,7 +4,8 @@ use simple_fs::{SPath, ensure_file_dir, read_to_string, safer_trash_dir, safer_t
 use std::fs;
 
 /// Executes the file changes defined in `AipFileChanges` relative to `base_dir`.
-pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
+pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
+	let base_dir = base_dir.into();
 	// -- Safety check: base_dir must be within CWD
 	let cwd = std::env::current_dir().map_err(|err| crate::Error::io_read_file(".", err))?;
 	let cwd_spath = SPath::from_std_path(cwd)?.into_collapsed();
@@ -53,10 +54,8 @@ pub fn apply_file_changes(base_dir: &SPath, file_changes: FileChanges) -> Result
 					fs_guard::check_for_read(&full_path, &base_dir)?;
 					fs_guard::check_for_write(&full_path, &base_dir)?;
 
-					let original_content =
-						read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
-					let new_content =
-						apply_patch(&file_path, &original_content, &patch_content.content)?;
+					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
+					let new_content = apply_patch(&file_path, &original_content, &patch_content.content)?;
 
 					if new_content == original_content {
 						return Err(crate::Error::apply_no_changes(file_path).into());
@@ -126,11 +125,9 @@ pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<S
 	}
 
 	let completed_patch = patch_completer::complete(&original_fixed, patch_raw)?;
-	let patch_obj = Patch::from_str(&completed_patch).map_err(|err| {
-		crate::Error::diffy_parse_patch(file_path, err, &completed_patch)
-	})?;
-	let new_content = apply(&original_fixed, &patch_obj).map_err(|err| {
-		crate::Error::diffy_apply_patch(file_path, err, &completed_patch)
-	})?;
+	let patch_obj = Patch::from_str(&completed_patch)
+		.map_err(|err| crate::Error::diffy_parse_patch(file_path, err, &completed_patch))?;
+	let new_content = apply(&original_fixed, &patch_obj)
+		.map_err(|err| crate::Error::diffy_apply_patch(file_path, err, &completed_patch))?;
 	Ok(new_content)
 }
