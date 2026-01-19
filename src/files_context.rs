@@ -11,7 +11,7 @@ pub fn load_files_context(base_dir: impl Into<SPath>, globs: &[&str]) -> Result<
 		let mut out = String::new();
 
 		for file in files {
-			let rel_path = file.path().diff(base_dir.path()).ok_or_else(|| {
+			let rel_path = file.diff(base_dir.path()).ok_or_else(|| {
 				crate::Error::Custom(format!("Could not get relative path for '{}'", file.path().as_str()))
 			})?;
 			let content = read_to_string(file.path()).map_err(crate::Error::simple_fs)?;

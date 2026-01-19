@@ -31,7 +31,7 @@ prompt = []
 # -- Tracing
 tracing = "0.1"
 # -- Files
-simple-fs = { version = "0.9.5"}
+simple-fs = { version = "0.10.0-alpha.1"}
 # -- Diff & Text
 diffy = "0.4.2"
 markex = { version = "0.1.0" }
