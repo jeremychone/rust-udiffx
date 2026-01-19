@@ -1,7 +1,7 @@
 # udiffx, for-llm api reference
 
 - crate: `udiffx`
-- version: `0.1.0-alpha.4`
+- version: `0.1.7`
 - purpose: parse and apply an AI-optimized "file changes" envelope (XML-like tags + unified diff patches)
 
 ## Envelope format (the only thing to parse)
@@ -29,6 +29,7 @@ Notes:
 Re-exports (from `udiffx` root):
 - `extract_file_changes`
 - `apply_file_changes`
+- `prompt` (feature "prompt")
 - `FileChanges`, `FileDirective`
 - `ApplyChangesStatus`, `DirectiveStatus`
 - `Error`, `Result<T>`
@@ -201,6 +202,17 @@ fn main() -> Result<()> {
     Ok(())
 }
 ````
+
+### Prompt
+
+Available when the `prompt` feature is enabled.
+
+Signature:
+
+- `pub fn prompt() -> &'static str`
+
+Behavior:
+- Returns the recommended system instructions for an LLM to generate the `FILE_CHANGES` block.
 
 ### ApplyChangesStatus / DirectiveStatus
 

@@ -143,6 +143,23 @@ When applying, `Fail` directives always yield an error for that directive and ar
   - `<FILE_RENAME from_path="a" to_path="b" />`
   - `<FILE_DELETE file_path="path" />`
 
+## System Prompt (optional)
+
+The crate includes the recommended system instructions for LLMs to ensure they output the correct format. This is available via the `prompt` feature.
+
+```toml
+[dependencies]
+udiffx = { version = "0.1", features = ["prompt"] }
+```
+
+```rust
+use udiffx::prompt;
+
+let instructions = prompt();
+// Pass this to your LLM system message.
+```
+
+
 ## License
 
 MIT OR Apache-2.0
