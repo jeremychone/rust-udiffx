@@ -1,8 +1,10 @@
 # udiffx
 
-Parse and apply an AI-optimized "file changes" envelope that carries multiple file operations in a single block, using unified diff patches for updates.
+Parse and apply an AI-optimized “file changes” envelope that carries multiple file operations in a single block, using unified diff patches for updates.
 
 This crate is designed for LLM output that needs to be machine-parsable and efficient for large files with small edits.
+
+[Doc for LLM](doc/for-llm/api-reference-for-llm.md)
 
 ## Concept, `FILE_CHANGES`
 
@@ -13,14 +15,14 @@ A response contains one root container:
 Inside it, you can mix multiple directives:
 
 - `<FILE_NEW file_path="..."> ... </FILE_NEW>`
-- `<FILE_PATCH file_path="..."> ... </FILE_PATCH>` (Unified Diff content)
+- `<FILE_PATCH file_path="..."> ... </FILE_PATCH>` (unified diff content)
 - `<FILE_RENAME from_path="..." to_path="..." />`
 - `<FILE_DELETE file_path="..." />`
 
 Notes:
 
-- Tags are XML-like but not intended to be strictly XML compliant.
-- The parser is tag-based, it extracts only the above tags, content does not need XML escaping.
+- Tags are XML-like but not intended to be strictly XML-compliant.
+- The parser is tag-based. It extracts only the above tags, and content does not need XML escaping.
 - Self-closing tags like `<FILE_DELETE ... />` are supported.
 
 ## API overview
@@ -32,10 +34,10 @@ The crate exposes two main operations:
 
 Key public types:
 
-- `FileChanges`, iterable list of directives.
+- `FileChanges`, an iterable list of directives.
 - `FileDirective`, one directive (new, patch, rename, delete, fail).
 - `ApplyChangesStatus`, per-directive success and error reporting.
-- `Error` / `Result<T>`, crate error type and alias.
+- `Error` / `Result<T>`, the crate error type and alias.
 
 ## Extracting changes from text
 
@@ -74,7 +76,7 @@ pub fn hello() { println!("Hello"); }
 
 `extract_content` parameter:
 
-- `extract_content = false` parses tags, returns `extruded = None`.
+- `extract_content = false` parses tags and returns `extruded = None`.
 - `extract_content = true` also returns the input with the extracted `<FILE_CHANGES>` block removed as `Some(String)`.
 
 ## Applying changes to disk
@@ -83,7 +85,7 @@ Use `apply_file_changes` to execute directives relative to a base directory.
 
 - All file paths are treated as relative to `base_dir`.
 - The crate performs basic path safety checks to ensure operations stay within `base_dir`.
-- Patch application uses `diffy` (Unified Diff parsing and application).
+- Patch application uses `diffy` (unified diff parsing and application).
 
 ```rust
 use simple_fs::SPath;
@@ -124,9 +126,9 @@ fn main() -> Result<()> {
 
 ## Directive behavior
 
-- `FILE_NEW`: creates or overwrites a file, parent directories are created.
-- `FILE_PATCH`: reads the target file, applies a unified diff, writes the result back.
-- `FILE_RENAME`: renames/moves `from_path` to `to_path`.
+- `FILE_NEW`: creates or overwrites a file. Parent directories are created.
+- `FILE_PATCH`: reads the target file, applies a unified diff, and writes the result back.
+- `FILE_RENAME`: renames or moves `from_path` to `to_path`.
 - `FILE_DELETE`: removes a file or directory recursively.
 
 If extraction fails for a directive (unknown tag, missing attribute, etc.), the directive is represented as:
@@ -143,7 +145,7 @@ When applying, `Fail` directives always yield an error for that directive and ar
   - `<FILE_RENAME from_path="a" to_path="b" />`
   - `<FILE_DELETE file_path="path" />`
 
-## System Prompt (optional)
+## System prompt (optional)
 
 The crate includes the recommended system instructions for LLMs to ensure they output the correct format. This is available via the `prompt` feature.
 
@@ -158,7 +160,6 @@ use udiffx::prompt;
 let instructions = prompt();
 // Pass this to your LLM system message.
 ```
-
 
 ## License
 
