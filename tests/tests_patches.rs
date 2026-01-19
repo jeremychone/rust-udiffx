@@ -69,8 +69,7 @@ fn test_patches_test_06() -> Result<()> {
 	let res = run_test_scenario("test-06-no-match");
 
 	// -- Check
-	assert!(res.is_err(), "should have error");
-	// assert_contains!(content, " Improve Patch Completer");
+	let _err = res.err().ok_or_else(|| "Should have failed")?;
 
 	Ok(())
 }
@@ -95,8 +94,8 @@ fn run_test_scenario(folder: &str) -> Result<String> {
 				content = match apply_patch(original_path.as_str(), &content, &patch_content.content) {
 					Ok(content) => content,
 					Err(err) => {
-						println!("Error for {folder} scenario:\n{err}");
-						return Err(format!("scenario {folder} failed").into());
+						// println!("Error for {folder} scenario:\n{err}");
+						return Err(format!("scenario {folder} failed\n{err}").into());
 					}
 				};
 			}
