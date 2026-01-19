@@ -8,6 +8,7 @@ mod error;
 mod extract;
 mod file_changes;
 mod file_directives;
+mod files_context;
 mod patch_completer;
 
 pub use applier::apply_file_changes;
@@ -16,6 +17,7 @@ pub use error::*;
 pub use extract::*;
 pub use file_changes::*;
 pub use file_directives::*;
+pub use files_context::load_files_context;
 
 // -- feature prompt
 #[cfg(feature = "prompt")]

@@ -1,8 +1,15 @@
 # udiffx, for-llm api reference
 
 - crate: `udiffx`
-- version: `0.1.7`
-- purpose: parse and apply an AI-optimized "file changes" envelope (XML-like tags + unified diff patches)
+ version: `0.1.8`
+
+## Context format (for reference)
+
+When providing file context to an LLM, the following format is used by `load_files_context`:
+
+<FILE_CONTENT path="...">
+... content ...
+</FILE_CONTENT>
 
 ## Envelope format (the only thing to parse)
 
@@ -29,6 +36,7 @@ Notes:
 Re-exports (from `udiffx` root):
 - `extract_file_changes`
 - `apply_file_changes`
+- `load_files_context`
 - `prompt` (feature "prompt")
 - `FileChanges`, `FileDirective`
 - `ApplyChangesStatus`, `DirectiveStatus`
@@ -38,6 +46,19 @@ Re-exports (from `udiffx` root):
 
 - `pub type Result<T> = core::result::Result<T, Error>;`
 - `Error` is `Debug + Display`, designed to provide actionable messages, including I/O failures and parsing failures.
+
+### Load Files Context
+
+Signature:
+
+- `pub fn load_files_context(base_dir: impl Into<SPath>, globs: &[&str]) -> Result<Option<String>>`
+
+Behavior:
+- Resolves globs relative to `base_dir`.
+- Reads matching files and formats them into `<FILE_CONTENT path="...">...</FILE_CONTENT>` blocks.
+- Files are sorted by path for deterministic output.
+- Returns `Ok(Some(String))` if files were found, `Ok(None)` otherwise.
+- Paths in `path` attribute are relative to `base_dir`.
 
 ### Extract
 

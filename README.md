@@ -39,6 +39,37 @@ Key public types:
 - `ApplyChangesStatus`, per-directive success and error reporting.
 - `Error` / `Result<T>`, the crate error type and alias.
 
+## Gathering file context
+
+Use `load_files_context` to gather files matching globs and format them for an LLM context.
+
+```rust
+use udiffx::{load_files_context, Result};
+
+fn main() -> Result<()> {
+    let base_dir = "./my-project";
+    let globs = &["src/**/*.rs", "Cargo.toml"];
+    
+    if let Some(context) = load_files_context(base_dir, globs)? {
+        println!("{context}");
+    }
+
+    Ok(())
+}
+```
+
+Output format:
+
+```xml
+<FILE_CONTENT path="Cargo.toml">
+... content ...
+</FILE_CONTENT>
+
+<FILE_CONTENT path="src/main.rs">
+... content ...
+</FILE_CONTENT>
+```
+
 ## Extracting changes from text
 
 Use `extract_file_changes` to parse a model response or any input string.
