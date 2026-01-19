@@ -123,12 +123,17 @@ fn compute_hunk_bounds(
 					break;
 				}
 			} else {
-				// Pattern goes beyond EOF: only allow if it's trailing whitespace/empty context
+				// Pattern goes beyond EOF: only allow if it's trailing context. 
+				// If it's a removal line, it's not a match.
+				if hl_line.starts_with('-') {
+					matches = false;
+					break;
+				}
 				current_overhang.push(hl_idx);
 			}
 		}
 
-		if matches && (!current_matches.is_empty() || !current_overhang.is_empty()) {
+		if matches && !current_matches.is_empty() {
 			found_idx = Some(i);
 			overhang_hl_indices = current_overhang;
 			skipped_hl_indices = current_skipped;

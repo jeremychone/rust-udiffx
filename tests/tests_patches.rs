@@ -58,7 +58,18 @@ fn test_patches_test_05() -> Result<()> {
 	let content = run_test_scenario("test-05-missplaced")?;
 
 	// -- Check
-	println!("->> content:\n{content}");
+	assert_contains!(content, "## Request: Ensure Alacritty");
+
+	Ok(())
+}
+
+#[test]
+fn test_patches_test_06() -> Result<()> {
+	// -- Exec
+	let res = run_test_scenario("test-06-no-match");
+
+	// -- Check
+	assert!(res.is_err(), "should have error");
 	// assert_contains!(content, " Improve Patch Completer");
 
 	Ok(())

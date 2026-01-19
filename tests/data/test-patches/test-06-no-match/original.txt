@@ -1,0 +1,34 @@
+The main construct of `simple-fs` is the `SPath` structure, which contains a `Utf8PathBuf` and ensures the following:
+
+- It is UTF-8 by contract.
+- Posix normalizes the path, meaning only `/` (no `\`), and redundant `//` or `/./` are collapsed to a single `./`.
+- It does not have any `\\?\` on Windows.
+
+The `SFile` is a File struct that contains an `SPath`.
+
+By applying the above rules, path/file APIs can be drastically simplified, and both structs offer many Path functions, with `&str` as the return type.
+
+This crate also offers a simple and scalable way to list or iterate on files, given a glob:
+
+- `iter_files(dir, include_globs: Option<&[&str]>, list_options: Option<ListOptions>) -> Result<impl Iter SFile>`
+- `list_files(dir, include_globs: Option<&[&str]>, list_options: Option<ListOptions>) -> Result<Vec<SFile>>`
+- `ensure_dir(dir_path)` makes sure all the directory paths are created.
+- `ensure_file_dir(file_path)` makes sure the file directory exists.
+
+The crate also includes other convenient, common APIs:
+
+- `read_to_string`, which reports the file path if not found.
+- `get_buf_reader`, which also reports the file path if not found or in case of an error.
+
+For more control, it is recommended to use `std::fs`, `walkdir`, `globset`, and other crates directly.
+
+This is a very early implementation, with more to come.
+
+Happy coding!
+
+## Notable Changes
+
+- `0.3.x` from `0.2.x`
+  - API CHANGE - watch - Changed the rx to be [flume](https://crates.io/crates/flume) based (works on both sync/async).
+- `0.2.0` from `0.1.x`
+  - API CHANGE - Now .file_name() and .file_stem() return Option<&str>; use .name() or .stem() to get &str.
