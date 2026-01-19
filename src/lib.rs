@@ -10,17 +10,18 @@ mod file_changes;
 mod file_directives;
 mod patch_completer;
 
-#[cfg(feature = "prompt")]
-mod prompt;
-
 pub use applier::apply_file_changes;
 pub use apply_changes_status::*;
 pub use error::*;
 pub use extract::*;
 pub use file_changes::*;
 pub use file_directives::*;
+
+// -- feature prompt
 #[cfg(feature = "prompt")]
-pub use prompt::prompt;
+mod prompt;
+#[cfg(feature = "prompt")]
+pub use prompt::prompt_file_changes;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod for_test {
