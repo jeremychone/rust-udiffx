@@ -139,7 +139,7 @@ fn compute_hunk_bounds(
 	for i in search_from..=orig_lines.len() {
 		let mut matches = true;
 		let mut current_overhang = Vec::new();
-		let mut current_skipped = Vec::new();
+		let current_skipped = Vec::new();
 		let mut current_converted_to_add = Vec::new();
 		let mut current_matches = Vec::new();
 		let mut current_exact_ws_count: usize = 0;
@@ -165,8 +165,12 @@ fn compute_hunk_bounds(
 					// ... and we're at/beyond EOF: convert to addition to preserve spacing.
 					current_converted_to_add.push(hl_idx);
 				} else {
-					// ... and original doesn't have a blank line: Skip this hunk line (resilience).
-					current_skipped.push(hl_idx);
+					// ... and original doesn't have a blank line: skip this hunk line
+					// without advancing the original offset. The LLM may have inserted
+					// a cosmetic blank line for readability that doesn't exist in the
+					// original. We convert it to an addition so it appears in the output
+					// without disrupting alignment of subsequent context/removal lines.
+					current_converted_to_add.push(hl_idx);
 				}
 			} else if target_idx < orig_lines.len() {
 				let orig_line = orig_lines[target_idx];
@@ -450,6 +454,71 @@ fn greet() {
 		// Both blocks are identical (same exact_ws_count), so proximity wins: line 1.
 		assert!(completed.contains("@@ -1,3 +1,3 @@"));
 		assert!(completed.contains("+    println!(\"hey\");"));
+
+		Ok(())
+	}
+
+	/// Verifies that a blank context line in the patch that doesn't match a non-blank
+	/// original line causes a match failure at that position, preventing alignment drift.
+	#[test]
+	fn test_patch_completer_complete_blank_context_no_skip() -> Result<()> {
+		// -- Setup & Fixtures
+		// Original has no blank line between line 2 and line 3.
+		let original = "line 1\nline 2\nline 3\nline 4\n";
+		// Patch has a blank context line between "line 2" and "line 3" that doesn't exist
+		// in the original. This should NOT silently skip and cause drift.
+		let patch = "@@\n line 2\n \n-line 3\n+line 3 modified\n line 4\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		// The unmatched blank context line is converted to an addition, and the rest
+		// of the hunk aligns correctly without drift.
+		assert!(completed.contains("@@ -2,3 +2,4 @@"));
+		assert!(completed.contains("+line 3 modified"));
+		// "line 3" should be a removal line (not misaligned)
+		assert!(completed.contains("-line 3\n"));
+
+		Ok(())
+	}
+
+	/// Verifies that blank context lines match correctly when the original also has
+	/// blank lines in the corresponding positions.
+	#[test]
+	fn test_patch_completer_complete_blank_context_matches_blank_original() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "line 1\nline 2\n\nline 4\nline 5\n";
+		// Blank context line aligns with the blank line in original (line 3).
+		let patch = "@@\n line 2\n \n-line 4\n+line 4 modified\n line 5\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -2,4 +2,4 @@"));
+		assert!(completed.contains("+line 4 modified"));
+
+		Ok(())
+	}
+
+	/// Verifies that when a blank context line doesn't match at one position,
+	/// the search continues and finds the correct position where it does match.
+	#[test]
+	fn test_patch_completer_complete_blank_context_finds_correct_position() -> Result<()> {
+		// -- Setup & Fixtures
+		// First "line A" is followed by non-blank "line B", second "line A" is followed by blank.
+		let original = "line A\nline B\nline C\nline A\n\nline D\n";
+		// Patch expects blank line after "line A", so it should match the second occurrence.
+		let patch = "@@\n line A\n \n-line D\n+line D modified\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		// Should match the second "line A" at line 4, not the first at line 1.
+		assert!(completed.contains("@@ -4,3 +4,3 @@"));
+		assert!(completed.contains("+line D modified"));
 
 		Ok(())
 	}
