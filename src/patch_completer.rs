@@ -21,6 +21,10 @@ fn normalize_ws(s: &str) -> String {
 ///   spacing; context that extends past the file is treated as overhang and dropped;
 ///   and hunks with no context/removal lines are treated as appends to the end of the file.
 pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
+	// Normalize CRLF to LF to prevent subtle mismatches with mixed line endings.
+	let original_content = original_content.replace("\r\n", "\n");
+	let patch_raw = patch_raw.replace("\r\n", "\n");
+
 	let mut lines = patch_raw.lines().peekable();
 	let mut completed_patch = String::new();
 	let orig_lines: Vec<&str> = original_content.lines().collect();
