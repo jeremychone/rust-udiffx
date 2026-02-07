@@ -71,6 +71,25 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 
 // region:    --- Support
 
+/// Minimum length for a patch context fragment to be eligible for suffix matching.
+/// This prevents very short strings (e.g., `"x"`) from false-positive matching.
+const SUFFIX_MATCH_MIN_LEN: usize = 10;
+
+/// Checks whether one trimmed line is a suffix of the other.
+/// Only applies when the shorter fragment is long enough to be meaningful,
+/// preventing false positives from very short context lines.
+fn suffix_match(orig_trimmed: &str, patch_trimmed: &str) -> bool {
+	let orig_norm = normalize_ws(orig_trimmed);
+	let patch_norm = normalize_ws(patch_trimmed);
+	if patch_norm.len() >= SUFFIX_MATCH_MIN_LEN && orig_norm.ends_with(&patch_norm) {
+		return true;
+	}
+	if orig_norm.len() >= SUFFIX_MATCH_MIN_LEN && patch_norm.ends_with(&orig_norm) {
+		return true;
+	}
+	false
+}
+
 fn compute_hunk_bounds(
 	orig_lines: &[&str],
 	hunk_lines: &[&str],
@@ -132,7 +151,9 @@ fn compute_hunk_bounds(
 				let line_match = if orig_trimmed.is_empty() || p_line_trimmed.is_empty() {
 					orig_trimmed == p_line_trimmed
 				} else {
-					orig_trimmed == p_line_trimmed || normalize_ws(orig_trimmed) == normalize_ws(p_line_trimmed)
+					orig_trimmed == p_line_trimmed
+						|| normalize_ws(orig_trimmed) == normalize_ws(p_line_trimmed)
+						|| suffix_match(orig_trimmed, p_line_trimmed)
 				};
 
 				if line_match {
