@@ -1,8 +1,20 @@
 use crate::{Error, Result};
 
-/// Completes a patch by filling in missing line numbers in hunk headers.
-/// If a hunk starts with just `@@` (optionally with whitespace), this function
-/// searches for the context in the original content and computes the line numbers.
+/// Completes a raw simplified patch (numberless `@@` hunks) into a fully valid unified diff
+/// that can be applied by `diffy`.
+///
+/// This handles the following:
+/// - Locates each hunk's context/removal lines in the original content via greedy search,
+///   with resilient matching (trimmed comparison, substring containment) to tolerate
+///   LLM whitespace and truncation inaccuracies.
+/// - Computes the `@@ -start,len +start,len @@` header for each hunk based on the
+///   matched position, tracking cumulative line-count deltas across hunks.
+/// - Reconstructs hunk body lines using the original file content (so context/removal
+///   lines match the file exactly), while preserving addition lines as-is.
+/// - Handles edge cases: blank context lines that don't align with the original are
+///   skipped; blank context lines at/beyond EOF are converted to additions to preserve
+///   spacing; context that extends past the file is treated as overhang and dropped;
+///   and hunks with no context/removal lines are treated as appends to the end of the file.
 pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 	let mut lines = patch_raw.lines().peekable();
 	let mut completed_patch = String::new();
