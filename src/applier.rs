@@ -54,11 +54,20 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 					fs_guard::check_for_read(&full_path, &base_dir)?;
 					fs_guard::check_for_write(&full_path, &base_dir)?;
 
-					let original_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
+					let original_content = if full_path.exists() {
+						read_to_string(&full_path).map_err(crate::Error::simple_fs)?
+					} else {
+						String::new()
+					};
+
 					let new_content = apply_patch(&file_path, &original_content, &patch_content.content)?;
 
-					if new_content == original_content {
+					if new_content == original_content && full_path.exists() {
 						return Err(crate::Error::apply_no_changes(file_path).into());
+					}
+
+					if !full_path.exists() {
+						ensure_file_dir(&full_path).map_err(crate::Error::simple_fs)?;
 					}
 
 					fs::write(&full_path, new_content)
