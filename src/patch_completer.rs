@@ -75,6 +75,33 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 /// This prevents very short strings (e.g., `"x"`) from false-positive matching.
 const SUFFIX_MATCH_MIN_LEN: usize = 10;
 
+/// Represents a candidate match found during hunk position search.
+struct CandidateMatch {
+	idx: usize,
+	overhang_hl_indices: Vec<usize>,
+	skipped_hl_indices: Vec<usize>,
+	converted_to_add_indices: Vec<usize>,
+	matched_orig_lines: Vec<(usize, String)>,
+
+	/// Number of context/removal lines that matched without needing normalization or suffix.
+	exact_ws_count: usize,
+}
+
+/// Scores a candidate match. Higher is better.
+/// Criteria:
+///   - Prefer more exact whitespace matches (no normalization needed).
+///   - Prefer match closest to the expected location (`search_from`).
+fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, isize) {
+	let distance = if candidate.idx >= search_from {
+		candidate.idx - search_from
+	} else {
+		search_from - candidate.idx
+	};
+	// Primary: exact whitespace count (higher is better)
+	// Secondary: negative distance (closer is better, so negate)
+	(candidate.exact_ws_count, -(distance as isize))
+}
+
 /// Checks whether one trimmed line is a suffix of the other.
 /// Only applies when the shorter fragment is long enough to be meaningful,
 /// preventing false positives from very short context lines.
@@ -106,11 +133,8 @@ fn compute_hunk_bounds(
 	}
 
 	// -- Greedy search for the pattern
-	let mut found_idx = None;
-	let mut overhang_hl_indices = Vec::new();
-	let mut skipped_hl_indices = Vec::new(); // Indices of hunk lines that don't exist in original
-	let mut converted_to_add_indices = Vec::new(); // Blank context lines at EOF, converted to additions
-	let mut matched_orig_lines: Vec<(usize, String)> = Vec::new(); // (hl_idx, orig_content)
+	// -- Collect all candidate matches, then pick the best one
+	let mut candidates: Vec<CandidateMatch> = Vec::new();
 
 	for i in search_from..=orig_lines.len() {
 		let mut matches = true;
@@ -118,6 +142,7 @@ fn compute_hunk_bounds(
 		let mut current_skipped = Vec::new();
 		let mut current_converted_to_add = Vec::new();
 		let mut current_matches = Vec::new();
+		let mut current_exact_ws_count: usize = 0;
 		let mut orig_off = 0; // offset in orig_lines from i
 
 		for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
@@ -157,6 +182,10 @@ fn compute_hunk_bounds(
 				};
 
 				if line_match {
+					// Track whether this was an exact whitespace match (no normalization needed)
+					if orig_line == p_line {
+						current_exact_ws_count += 1;
+					}
 					current_matches.push((hl_idx, orig_line.to_string()));
 					orig_off += 1;
 				} else {
@@ -175,16 +204,25 @@ fn compute_hunk_bounds(
 		}
 
 		if matches && !current_matches.is_empty() {
-			found_idx = Some(i);
-			overhang_hl_indices = current_overhang;
-			skipped_hl_indices = current_skipped;
-			converted_to_add_indices = current_converted_to_add;
-			matched_orig_lines = current_matches;
-			break;
+			candidates.push(CandidateMatch {
+				idx: i,
+				overhang_hl_indices: current_overhang,
+				skipped_hl_indices: current_skipped,
+				converted_to_add_indices: current_converted_to_add,
+				matched_orig_lines: current_matches,
+				exact_ws_count: current_exact_ws_count,
+			});
 		}
 	}
 
-	let idx = found_idx.ok_or_else(|| {
+	// -- Select the best candidate by score
+	let best = candidates.into_iter().max_by(|a, b| {
+		let sa = score_candidate(a, search_from);
+		let sb = score_candidate(b, search_from);
+		sa.cmp(&sb)
+	});
+
+	let best = best.ok_or_else(|| {
 		let context_pattern: Vec<String> = hunk_lines
 			.iter()
 			.filter(|l| l.starts_with(' ') || l.starts_with('-'))
@@ -197,6 +235,12 @@ fn compute_hunk_bounds(
 			context_pattern.join("\n")
 		))
 	})?;
+
+	let idx = best.idx;
+	let overhang_hl_indices = best.overhang_hl_indices;
+	let skipped_hl_indices = best.skipped_hl_indices;
+	let converted_to_add_indices = best.converted_to_add_indices;
+	let matched_orig_lines = best.matched_orig_lines;
 
 	// -- Reconstruct final hunk lines and calculate counts
 	let mut final_hunk_lines = Vec::new();
@@ -350,6 +394,62 @@ mod tests {
 		// -- Check
 		assert!(completed.contains("@@ -1,3 +1,3 @@"));
 		assert!(completed.contains("+    println!(\"world\");"));
+
+		Ok(())
+	}
+
+	/// Verifies that when duplicate patterns exist, the scoring system prefers
+	/// the match with exact whitespace over a normalized match.
+	#[test]
+	fn test_patch_completer_complete_scoring_exact_ws_preferred() -> Result<()> {
+		// -- Setup & Fixtures
+		// Two blocks that match trimmed, but only the second has exact whitespace.
+		let original = "\
+    fn hello() {
+        println!(\"hello\");
+    }
+fn hello() {
+    println!(\"hello\");
+}
+";
+		// Patch context uses no leading indentation, matching the second block exactly.
+		let patch = "@@\n fn hello() {\n-    println!(\"hello\");\n+    println!(\"world\");\n }\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		// Should match the second block (line 4), not the first (line 1).
+		assert!(completed.contains("@@ -4,3 +4,3 @@"));
+		assert!(completed.contains("+    println!(\"world\");"));
+
+		Ok(())
+	}
+
+	/// Verifies that when two identical blocks exist, the match closest to
+	/// search_from (i.e., the first one) is preferred.
+	#[test]
+	fn test_patch_completer_complete_scoring_proximity_preferred() -> Result<()> {
+		// -- Setup & Fixtures
+		// Two identical blocks; scoring should prefer the first (closer to search_from=0).
+		let original = "\
+fn greet() {
+    println!(\"hi\");
+}
+fn other() {}
+fn greet() {
+    println!(\"hi\");
+}
+";
+		let patch = "@@\n fn greet() {\n-    println!(\"hi\");\n+    println!(\"hey\");\n }\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		// Both blocks are identical (same exact_ws_count), so proximity wins: line 1.
+		assert!(completed.contains("@@ -1,3 +1,3 @@"));
+		assert!(completed.contains("+    println!(\"hey\");"));
 
 		Ok(())
 	}
