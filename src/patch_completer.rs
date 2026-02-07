@@ -73,12 +73,14 @@ fn compute_hunk_bounds(
 	let mut found_idx = None;
 	let mut overhang_hl_indices = Vec::new();
 	let mut skipped_hl_indices = Vec::new(); // Indices of hunk lines that don't exist in original
+	let mut converted_to_add_indices = Vec::new(); // Blank context lines at EOF, converted to additions
 	let mut matched_orig_lines: Vec<(usize, String)> = Vec::new(); // (hl_idx, orig_content)
 
 	for i in search_from..=orig_lines.len() {
 		let mut matches = true;
 		let mut current_overhang = Vec::new();
 		let mut current_skipped = Vec::new();
+		let mut current_converted_to_add = Vec::new();
 		let mut current_matches = Vec::new();
 		let mut orig_off = 0; // offset in orig_lines from i
 
@@ -98,6 +100,9 @@ fn compute_hunk_bounds(
 					// ... and original has a blank line: Match.
 					current_matches.push((hl_idx, orig_lines[target_idx].to_string()));
 					orig_off += 1;
+				} else if target_idx >= orig_lines.len() {
+					// ... and we're at/beyond EOF: convert to addition to preserve spacing.
+					current_converted_to_add.push(hl_idx);
 				} else {
 					// ... and original doesn't have a blank line: Skip this hunk line (resilience).
 					current_skipped.push(hl_idx);
@@ -123,7 +128,7 @@ fn compute_hunk_bounds(
 					break;
 				}
 			} else {
-				// Pattern goes beyond EOF: only allow if it's trailing context. 
+				// Pattern goes beyond EOF: only allow if it's trailing context.
 				// If it's a removal line, it's not a match.
 				if hl_line.starts_with('-') {
 					matches = false;
@@ -137,6 +142,7 @@ fn compute_hunk_bounds(
 			found_idx = Some(i);
 			overhang_hl_indices = current_overhang;
 			skipped_hl_indices = current_skipped;
+			converted_to_add_indices = current_converted_to_add;
 			matched_orig_lines = current_matches;
 			break;
 		}
@@ -163,6 +169,13 @@ fn compute_hunk_bounds(
 
 	for (hl_idx, line) in hunk_lines.iter().enumerate() {
 		if overhang_hl_indices.contains(&hl_idx) || skipped_hl_indices.contains(&hl_idx) {
+			continue;
+		}
+
+		// Blank context lines at EOF are converted to addition lines to preserve spacing
+		if converted_to_add_indices.contains(&hl_idx) {
+			final_hunk_lines.push("+".to_string());
+			new_count += 1;
 			continue;
 		}
 

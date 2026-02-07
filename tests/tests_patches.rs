@@ -74,6 +74,17 @@ fn test_patches_test_06() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_07() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-07-new-line")?;
+
+	// -- Check
+	println!("->> \n{content}");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str) -> Result<String> {

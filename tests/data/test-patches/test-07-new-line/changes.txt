@@ -1,0 +1,16 @@
+<FILE_CHANGES>
+
+<FILE_PATCH file_path=".aipack/.prompt/pro@coder/dev/chat/dev-chat.md">
+```md
+@@
+ # Dev Chat
+
+ Add a new `## Request: _user_ask_title_concise_` with the answer below (concise title). Use markdown sub-headings for sub sections. Keep this top instruction in this file.
+
++## Request: Unified Tools API (ToolName and ToolConfig)
++
++### Requirement and goal
++
+</FILE_PATCH>
+
+</FILE_CHANGES>
