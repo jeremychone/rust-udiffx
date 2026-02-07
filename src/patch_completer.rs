@@ -1,4 +1,5 @@
 use crate::{Error, Result};
+use std::borrow::Cow;
 
 /// Collapses runs of whitespace into a single space for normalized comparison.
 fn normalize_ws(s: &str) -> String {
@@ -22,8 +23,16 @@ fn normalize_ws(s: &str) -> String {
 ///   and hunks with no context/removal lines are treated as appends to the end of the file.
 pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 	// Normalize CRLF to LF to prevent subtle mismatches with mixed line endings.
-	let original_content = original_content.replace("\r\n", "\n");
-	let patch_raw = patch_raw.replace("\r\n", "\n");
+	let original_content: Cow<'_, str> = if original_content.contains("\r\n") {
+		Cow::Owned(original_content.replace("\r\n", "\n"))
+	} else {
+		Cow::Borrowed(original_content)
+	};
+	let patch_raw: Cow<'_, str> = if patch_raw.contains("\r\n") {
+		Cow::Owned(patch_raw.replace("\r\n", "\n"))
+	} else {
+		Cow::Borrowed(patch_raw)
+	};
 
 	let mut lines = patch_raw.lines().peekable();
 	let mut completed_patch = String::new();
