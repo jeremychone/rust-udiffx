@@ -1,5 +1,10 @@
 use crate::{Error, Result};
 
+/// Collapses runs of whitespace into a single space for normalized comparison.
+fn normalize_ws(s: &str) -> String {
+	s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// Completes a raw simplified patch (numberless `@@` hunks) into a fully valid unified diff
 /// that can be applied by `diffy`.
 ///
@@ -127,9 +132,7 @@ fn compute_hunk_bounds(
 				let line_match = if orig_trimmed.is_empty() || p_line_trimmed.is_empty() {
 					orig_trimmed == p_line_trimmed
 				} else {
-					orig_trimmed == p_line_trimmed
-						|| orig_trimmed.contains(p_line_trimmed)
-						|| p_line_trimmed.contains(orig_trimmed)
+					orig_trimmed == p_line_trimmed || normalize_ws(orig_trimmed) == normalize_ws(p_line_trimmed)
 				};
 
 				if line_match {

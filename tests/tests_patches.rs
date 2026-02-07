@@ -80,7 +80,7 @@ fn test_patches_test_07() -> Result<()> {
 	let content = run_test_scenario("test-07-new-line")?;
 
 	// -- Check
-	println!("->> \n{content}");
+	assert_contains!(content, "## Request: Unified Tool");
 
 	Ok(())
 }
