@@ -296,6 +296,63 @@ mod tests {
 
 		Ok(())
 	}
+
+	/// Verifies that a short substring like "x" does not false-positive match a longer line.
+	/// The old `contains`-based logic would have matched "x" against "box of foxes".
+	#[test]
+	fn test_patch_completer_complete_no_false_positive_contains_short() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "box of foxes\nthe letter x\nanother line\n";
+		// Context line "x" should only match "the letter x", not "box of foxes"
+		let patch = "@@\n the letter x\n+inserted after x\n another line\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		// Should match starting at line 2 ("the letter x"), not line 1 ("box of foxes")
+		assert!(completed.contains("@@ -2,2 +2,3 @@"));
+		assert!(completed.contains("+inserted after x"));
+
+		Ok(())
+	}
+
+	/// Verifies that a line which is a substring of another does not false-positive match.
+	/// E.g., context "name" should not match original "namespace" via contains.
+	#[test]
+	fn test_patch_completer_complete_no_false_positive_contains_substring() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "namespace\nname\nvalue\n";
+		// Context "name" should match line 2, not line 1 ("namespace")
+		let patch = "@@\n name\n+new name line\n value\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -2,2 +2,3 @@"));
+		assert!(completed.contains("+new name line"));
+
+		Ok(())
+	}
+
+	/// Verifies normalized whitespace equality works (multiple spaces collapsed).
+	#[test]
+	fn test_patch_completer_complete_normalized_ws_equality() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "fn   main()  {\n    println!(\"hello\");\n}\n";
+		// LLM collapses multiple spaces to single space
+		let patch = "@@\n fn main() {\n-    println!(\"hello\");\n+    println!(\"world\");\n }\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -1,3 +1,3 @@"));
+		assert!(completed.contains("+    println!(\"world\");"));
+
+		Ok(())
+	}
 }
 
 // endregion: --- Tests
