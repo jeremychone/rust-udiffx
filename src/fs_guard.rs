@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{Error, Result};
 use simple_fs::SPath;
 
 /// Checks if the target path is safe to write, ensuring it remains within the base directory.
@@ -18,7 +18,7 @@ fn check_in_base(target: &SPath, base_dir: &SPath) -> Result<()> {
 	let target = target.clone().into_collapsed();
 
 	if !target.as_str().starts_with(base_dir.as_str()) {
-		return Err(crate::Error::security_violation(target.to_string(), base_dir.to_string()).into());
+		return Err(Error::security_violation(target.to_string(), base_dir.to_string()));
 	}
 
 	Ok(())

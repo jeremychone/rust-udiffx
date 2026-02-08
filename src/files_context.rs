@@ -7,7 +7,7 @@ pub fn load_files_context(base_dir: impl Into<SPath>, globs: &[&str]) -> Result<
 	let base_dir = base_dir.into();
 	let files = list_files(&base_dir, Some(globs), None)?;
 
-	let res = if files.len() > 0 {
+	let res = if !files.is_empty() {
 		let mut out = String::new();
 
 		for file in files {

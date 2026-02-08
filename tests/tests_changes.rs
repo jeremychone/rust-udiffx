@@ -160,7 +160,7 @@ fn test_changes_simple() -> Result<()> {
 	let status = apply_file_changes(&base_dir, changes)?;
 
 	// -- Check
-	let len = status.items.iter().count();
+	let len = status.items.len();
 	assert_eq!(5, len, "Wrong directive length");
 	let success_count = status.items.iter().filter(|i| i.success()).count();
 	assert_eq!(3, success_count, "Wrong success count");
@@ -179,7 +179,7 @@ fn test_changes_no_head_nums() -> Result<()> {
 	let status = apply_file_changes(&base_dir, changes)?;
 
 	// -- Check
-	let len = status.items.iter().count();
+	let len = status.items.len();
 	assert_eq!(5, len, "Wrong directive length");
 	let success_count = status.items.iter().filter(|i| i.success()).count();
 	assert_eq!(3, success_count, "Wrong success count");
@@ -205,7 +205,7 @@ fn test_changes_with_code_fence() -> Result<()> {
 	let status = apply_file_changes(&base_dir_spath, changes)?;
 
 	// -- Check
-	let len = status.items.iter().count();
+	let len = status.items.len();
 	assert_eq!(5, len, "Wrong directive length");
 	let success_count = status.items.iter().filter(|i| i.success()).count();
 	assert_eq!(3, success_count, "Wrong success count");

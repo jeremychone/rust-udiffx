@@ -69,7 +69,7 @@ fn test_patches_test_06() -> Result<()> {
 	let res = run_test_scenario("test-06-no-match");
 
 	// -- Check
-	let _err = res.err().ok_or_else(|| "Should have failed")?;
+	let _err = res.err().ok_or("Should have failed")?;
 
 	Ok(())
 }

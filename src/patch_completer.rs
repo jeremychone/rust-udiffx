@@ -105,10 +105,9 @@ struct CandidateMatch {
 ///   - Prefer more exact whitespace matches (no normalization needed).
 ///   - Prefer match closest to the expected location (`search_from`).
 fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, isize) {
-	let distance = if candidate.idx >= search_from {
-		candidate.idx - search_from
-	} else {
-		search_from - candidate.idx
+	let distance = match candidate.idx >= search_from {
+		true => candidate.idx - search_from,
+		false => search_from - candidate.idx,
 	};
 	// Primary: exact whitespace count (higher is better)
 	// Secondary: negative distance (closer is better, so negate)

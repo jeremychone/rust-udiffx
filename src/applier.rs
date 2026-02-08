@@ -1,4 +1,6 @@
-use crate::{ApplyChangesStatus, DirectiveStatus, FileChanges, FileDirective, Result, fs_guard, patch_completer};
+use crate::{
+	ApplyChangesStatus, DirectiveStatus, Error, FileChanges, FileDirective, Result, fs_guard, patch_completer,
+};
 use diffy::{Patch, apply};
 use simple_fs::{SPath, ensure_file_dir, read_to_string, safer_trash_dir, safer_trash_file};
 use std::fs;
@@ -7,7 +9,7 @@ use std::fs;
 pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
 	let base_dir = base_dir.into();
 	// -- Safety check: base_dir must be within CWD
-	let cwd = std::env::current_dir().map_err(|err| crate::Error::io_read_file(".", err))?;
+	let cwd = std::env::current_dir().map_err(|err| Error::io_read_file(".", err))?;
 	let cwd_spath = SPath::from_std_path(cwd)?.into_collapsed();
 
 	let base_dir = if base_dir.is_absolute() {
@@ -17,7 +19,7 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 	};
 
 	if !base_dir.as_str().starts_with(cwd_spath.as_str()) {
-		return Err(crate::Error::security_violation(base_dir.to_string(), cwd_spath.to_string()).into());
+		return Err(Error::security_violation(base_dir.to_string(), cwd_spath.to_string()));
 	}
 
 	let mut items = Vec::new();
@@ -31,18 +33,18 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 					let full_path = base_dir.join(&file_path);
 					fs_guard::check_for_write(&full_path, &base_dir)?;
 
-					ensure_file_dir(&full_path).map_err(crate::Error::simple_fs)?;
+					ensure_file_dir(&full_path).map_err(Error::simple_fs)?;
 
 					if full_path.exists() {
-						let existing_content = read_to_string(&full_path).map_err(crate::Error::simple_fs)?;
+						let existing_content = read_to_string(&full_path).map_err(Error::simple_fs)?;
 						if existing_content == content.content {
-							return Err(crate::Error::apply_no_changes(file_path).into());
+							return Err(Error::apply_no_changes(file_path));
 						}
 						fs::write(&full_path, &content.content)
-							.map_err(|err| crate::Error::io_write_file(full_path.to_string(), err))?;
+							.map_err(|err| Error::io_write_file(full_path.to_string(), err))?;
 					} else {
 						fs::write(&full_path, &content.content)
-							.map_err(|err| crate::Error::io_create_file(full_path.to_string(), err))?;
+							.map_err(|err| Error::io_create_file(full_path.to_string(), err))?;
 					}
 				}
 
@@ -55,7 +57,7 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 					fs_guard::check_for_write(&full_path, &base_dir)?;
 
 					let original_content = if full_path.exists() {
-						read_to_string(&full_path).map_err(crate::Error::simple_fs)?
+						read_to_string(&full_path).map_err(Error::simple_fs)?
 					} else {
 						String::new()
 					};
@@ -63,15 +65,15 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 					let new_content = apply_patch(&file_path, &original_content, &patch_content.content)?;
 
 					if new_content == original_content && full_path.exists() {
-						return Err(crate::Error::apply_no_changes(file_path).into());
+						return Err(Error::apply_no_changes(file_path));
 					}
 
 					if !full_path.exists() {
-						ensure_file_dir(&full_path).map_err(crate::Error::simple_fs)?;
+						ensure_file_dir(&full_path).map_err(Error::simple_fs)?;
 					}
 
 					fs::write(&full_path, new_content)
-						.map_err(|err| crate::Error::io_write_file(full_path.to_string(), err))?;
+						.map_err(|err| Error::io_write_file(full_path.to_string(), err))?;
 				}
 
 				FileDirective::Rename { from_path, to_path } => {
@@ -82,12 +84,11 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 					fs_guard::check_for_write(&full_to, &base_dir)?;
 
 					if full_from.exists() {
-						ensure_file_dir(&full_to).map_err(crate::Error::simple_fs)?;
-						fs::rename(&full_from, &full_to).map_err(|err| {
-							crate::Error::io_rename_path(full_from.to_string(), full_to.to_string(), err)
-						})?;
+						ensure_file_dir(&full_to).map_err(Error::simple_fs)?;
+						fs::rename(&full_from, &full_to)
+							.map_err(|err| Error::io_rename_path(full_from.to_string(), full_to.to_string(), err))?;
 					} else {
-						return Err(crate::Error::apply_path_not_found("rename source", from_path).into());
+						return Err(Error::apply_path_not_found("rename source", from_path));
 					}
 				}
 
@@ -97,13 +98,13 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 					if full_path.exists() {
 						if full_path.is_dir() {
 							safer_trash_dir(&full_path, ())
-								.map_err(|err| crate::Error::io_delete_dir_all(full_path.to_string(), err))?;
+								.map_err(|err| Error::io_delete_dir_all(full_path.to_string(), err))?;
 						} else {
 							safer_trash_file(&full_path, ())
-								.map_err(|err| crate::Error::io_delete_file(full_path.to_string(), err))?;
+								.map_err(|err| Error::io_delete_file(full_path.to_string(), err))?;
 						}
 					} else {
-						return Err(crate::Error::apply_path_not_found("delete", file_path).into());
+						return Err(Error::apply_path_not_found("delete", file_path));
 					}
 				}
 
@@ -134,9 +135,9 @@ pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<S
 	}
 
 	let completed_patch = patch_completer::complete(&original_fixed, patch_raw)?;
-	let patch_obj = Patch::from_str(&completed_patch)
-		.map_err(|err| crate::Error::diffy_parse_patch(file_path, err, &completed_patch))?;
-	let new_content = apply(&original_fixed, &patch_obj)
-		.map_err(|err| crate::Error::diffy_apply_patch(file_path, err, &completed_patch))?;
+	let patch_obj =
+		Patch::from_str(&completed_patch).map_err(|err| Error::diffy_parse_patch(file_path, err, &completed_patch))?;
+	let new_content =
+		apply(&original_fixed, &patch_obj).map_err(|err| Error::diffy_apply_patch(file_path, err, &completed_patch))?;
 	Ok(new_content)
 }
