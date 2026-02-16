@@ -1,0 +1,52 @@
+
+
+<FILE_CHANGES>
+<FILE_PATCH file_path="dev/spec-code/spec-code-tui.md">
+@@
+ pub enum AppActionEvent {
+     Quit, Redo, CancelRun,
+     Scroll(ScrollDir), ScrollPage(ScrollDir), ScrollToEnd(ScrollDir),
++    WorkConfirm(Id), WorkCancel(Id), Run(RunArgs),
+ }
+@@
+ pub enum UiAction {
+     Quit, Redo, CancelRun,
+     ToggleRunsNav,
+     CycleTasksOverviewMode,
+     GoToTask { task_id: Id },
++    WorkConfirm(Id), WorkCancel(Id), WorkRun(Id), WorkClose(Id),
+     ToClipboardCopy(String),
+     OpenFile(String), // Opens file at path using auto-editor
+ }
+@@
+-### formatting & UI Getters (impl_fmt.rs)
++### Formatting & UI Getters (impl_fmt.rs & impl_model_state.rs)
+
+ - `current_run_duration_txt()`, `current_run_cost_fmt()`.
+@@
+ - `current_task_model_name()`, `current_task_cost_fmt()`, `current_task_duration_txt()`.
+ - `current_task_prompt_tokens_fmt()`, `current_task_completion_tokens_fmt()`.
+ - `current_task_cache_info_fmt()`.
++
++### Model State Helpers
++- `current_run_has_prompt_parts()`, `current_run_has_task_stages()`, `current_run_has_skip()`.
+
+ ### Interaction
+@@
+-### Lifecycle & Timeouts
++### Lifecycle & State Processing
+
+ Time-based state transitions and expirations are primarily managed in `src/tui/core/app_state/state_processor.rs`.
+
+-- **Auto-dismiss (4s)**: `AppStage::Installed` reverts to `Normal` after 4,000,000 microseconds (managed in `process_stage`).
+ - **Timed Popups**: `PopupMode::Timed(Duration)` expiration (managed in `process_app_state`).
+ - **Keep-Alive**: `AppState::should_be_pinged()` (in `app_state_base.rs`) determines if the TUI should continue receiving `AppEvent::Tick` events when idle.
+@@
+ ### LinkZones (src/tui/core/types/link_zone.rs)
+ Used to handle hover/click on specific text regions.
++- `start_group() -> u32`: For multi-line section-wide hover.
++- `push_group_zone(...)`: Registers a zone belonging to a group.
+ - `is_mouse_over(area, scroll, mouse_evt, spans) -> Option<&mut [Span]>`.
+</FILE_PATCH>
+</FILE_CHANGES>
+

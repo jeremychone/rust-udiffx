@@ -85,6 +85,17 @@ fn test_patches_test_07() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_08() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-08-missmatch")?;
+
+	// -- Check
+	println!("->> \n{content}");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str) -> Result<String> {
