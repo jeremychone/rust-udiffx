@@ -1,4 +1,4 @@
-use crate::FileDirective;
+use crate::{FileDirective, MatchTier};
 
 #[derive(Debug, Clone)]
 pub struct ApplyChangesStatus {
@@ -9,6 +9,7 @@ pub struct ApplyChangesStatus {
 pub struct DirectiveStatus {
 	pub kind: DirectiveKind,
 	pub success: bool,
+	pub match_tier: Option<MatchTier>,
 	pub error_msg: Option<String>,
 }
 
@@ -100,6 +101,7 @@ impl From<&FileDirective> for DirectiveStatus {
 		Self {
 			kind,
 			success: false,
+			match_tier: None,
 			error_msg,
 		}
 	}

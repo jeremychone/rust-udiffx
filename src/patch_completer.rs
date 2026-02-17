@@ -4,7 +4,7 @@ use std::borrow::Cow;
 // region:    --- Types
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum MatchTier {
+pub enum MatchTier {
 	Strict,
 	Resilient,
 	Fuzzy,
@@ -32,7 +32,7 @@ fn normalize_ws(s: &str) -> String {
 ///   skipped; blank context lines at/beyond EOF are converted to additions to preserve
 ///   spacing; context that extends past the file is treated as overhang and dropped;
 ///   and hunks with no context/removal lines are treated as appends to the end of the file.
-pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
+pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Option<MatchTier>)> {
 	// Normalize CRLF to LF to prevent subtle mismatches with mixed line endings.
 	let original_content: Cow<'_, str> = if original_content.contains("\r\n") {
 		Cow::Owned(original_content.replace("\r\n", "\n"))
@@ -50,6 +50,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 	let orig_lines: Vec<&str> = original_content.lines().collect();
 	let mut total_delta: isize = 0;
 	let mut search_from: usize = 0;
+	let mut max_tier: Option<MatchTier> = None;
 
 	while let Some(line) = lines.next() {
 		let trimmed = line.trim();
@@ -66,9 +67,13 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 			}
 
 			// Compute line numbers
-			let (old_start, old_count, new_count, final_hunk_lines) =
+			let (old_start, old_count, new_count, final_hunk_lines, tier) =
 				compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
 			let new_start = (old_start as isize + total_delta) as usize;
+
+			if let Some(t) = tier {
+				max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
+			}
 
 			// Update state for next hunk
 			search_from = old_start + old_count - 1;
@@ -90,7 +95,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<String> {
 		}
 	}
 
-	Ok(completed_patch)
+	Ok((completed_patch, max_tier))
 }
 
 // region:    --- Support
@@ -269,7 +274,7 @@ fn compute_hunk_bounds(
 	orig_lines: &[&str],
 	hunk_lines: &[&str],
 	search_from: usize,
-) -> Result<(usize, usize, usize, Vec<String>)> {
+) -> Result<(usize, usize, usize, Vec<String>, Option<MatchTier>)> {
 	// -- Pre-check for pattern existence
 	let context_lines_count = hunk_lines.iter().filter(|l| !l.starts_with('+')).count();
 
@@ -277,7 +282,7 @@ fn compute_hunk_bounds(
 	if context_lines_count == 0 {
 		let added_count = hunk_lines.len();
 		let final_hunk_lines = hunk_lines.iter().map(|s| s.to_string()).collect();
-		return Ok((orig_lines.len() + 1, 0, added_count, final_hunk_lines));
+		return Ok((orig_lines.len() + 1, 0, added_count, final_hunk_lines, None));
 	}
 
 	// -- Tiered search: stop at the first tier that yields candidates
@@ -313,6 +318,7 @@ fn compute_hunk_bounds(
 	})?;
 
 	let idx = best.idx;
+	let tier = best.tier;
 	let overhang_hl_indices = best.overhang_hl_indices;
 	let skipped_hl_indices = best.skipped_hl_indices;
 	let converted_to_add_indices = best.converted_to_add_indices;
@@ -355,7 +361,7 @@ fn compute_hunk_bounds(
 		}
 	}
 
-	Ok((idx + 1, old_count, new_count, final_hunk_lines))
+	Ok((idx + 1, old_count, new_count, final_hunk_lines, Some(tier)))
 }
 
 // endregion: --- Support
@@ -375,7 +381,7 @@ mod tests {
 		let patch = "@@\n line 2\n+line 2.5\n line 3\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		assert!(completed.contains("@@ -2,2 +2,3 @@"));
@@ -392,7 +398,7 @@ mod tests {
 		let patch = "@@\n some suffix.\n+New line after suffix.\n Another line.\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		assert!(completed.contains("@@ -1,2 +1,3 @@"));
@@ -409,7 +415,7 @@ mod tests {
 		let patch = "@@\n Indented line\n+    New indented line\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		assert!(completed.contains("@@ -1,1 +1,2 @@"));
@@ -427,7 +433,7 @@ mod tests {
 		let patch = "@@\n the letter x\n+inserted after x\n another line\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		// Should match starting at line 2 ("the letter x"), not line 1 ("box of foxes")
@@ -447,7 +453,7 @@ mod tests {
 		let patch = "@@\n name\n+new name line\n value\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		assert!(completed.contains("@@ -2,2 +2,3 @@"));
@@ -465,7 +471,7 @@ mod tests {
 		let patch = "@@\n fn main() {\n-    println!(\"hello\");\n+    println!(\"world\");\n }\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		assert!(completed.contains("@@ -1,3 +1,3 @@"));
@@ -492,7 +498,7 @@ fn hello() {
 		let patch = "@@\n fn hello() {\n-    println!(\"hello\");\n+    println!(\"world\");\n }\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		// Should match the second block (line 4), not the first (line 1).
@@ -520,7 +526,7 @@ fn greet() {
 		let patch = "@@\n fn greet() {\n-    println!(\"hi\");\n+    println!(\"hey\");\n }\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		// Both blocks are identical (same exact_ws_count), so proximity wins: line 1.
@@ -542,7 +548,7 @@ fn greet() {
 		let patch = "@@\n line 2\n \n-line 3\n+line 3 modified\n line 4\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		// The unmatched blank context line is converted to an addition, and the rest
@@ -565,7 +571,7 @@ fn greet() {
 		let patch = "@@\n line 2\n \n-line 4\n+line 4 modified\n line 5\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		assert!(completed.contains("@@ -2,4 +2,4 @@"));
@@ -585,7 +591,7 @@ fn greet() {
 		let patch = "@@\n line A\n \n-line D\n+line D modified\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		// Should match the second "line A" at line 4, not the first at line 1.
@@ -614,7 +620,7 @@ fn do_work() {
 		let patch = "@@\n fn do_work() {\n-    old_call();\n+    new_call();\n }\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		// Should match the second block (line 4) via strict, not the first (line 1) via resilient.
@@ -633,7 +639,7 @@ fn do_work() {
 		let patch = "@@\n ## section title\n-Some content here.\n+Replaced content here.\n More content.\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		assert!(completed.contains("@@ -1,3 +1,3 @@"));
@@ -653,7 +659,7 @@ fn do_work() {
 		let patch = "@@\n fn example() {\n-    let x = 1;\n+    let x = 42;\n     let y = 2;\n }\n";
 
 		// -- Exec
-		let completed = complete(original, patch)?;
+		let (completed, _) = complete(original, patch)?;
 
 		// -- Check
 		// Should match at line 1 via resilient tier (normalized whitespace).

@@ -1,5 +1,6 @@
 use crate::{
-	ApplyChangesStatus, DirectiveStatus, Error, FileChanges, FileDirective, Result, fs_guard, patch_completer,
+	ApplyChangesStatus, DirectiveStatus, Error, FileChanges, FileDirective, MatchTier, Result, fs_guard,
+	patch_completer,
 };
 use diffy::{Patch, apply};
 use simple_fs::{SPath, ensure_file_dir, read_to_string, safer_trash_dir, safer_trash_file};
@@ -62,7 +63,8 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						String::new()
 					};
 
-					let new_content = apply_patch(&file_path, &original_content, &patch_content.content)?;
+					let (new_content, tier) = apply_patch(&file_path, &original_content, &patch_content.content)?;
+					info.match_tier = tier;
 
 					if new_content == original_content && full_path.exists() {
 						return Err(Error::apply_no_changes(file_path));
@@ -127,17 +129,17 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 }
 
 /// Applies a patch content to an original string, handling potential patch completion.
-pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<String> {
+pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<(String, Option<MatchTier>)> {
 	// Ensure original has a trailing newline (POSIX compliance)
 	let mut original_fixed = original.to_string();
 	if !original_fixed.is_empty() && !original_fixed.ends_with('\n') {
 		original_fixed.push('\n');
 	}
 
-	let completed_patch = patch_completer::complete(&original_fixed, patch_raw)?;
+	let (completed_patch, tier) = patch_completer::complete(&original_fixed, patch_raw)?;
 	let patch_obj =
 		Patch::from_str(&completed_patch).map_err(|err| Error::diffy_parse_patch(file_path, err, &completed_patch))?;
 	let new_content =
 		apply(&original_fixed, &patch_obj).map_err(|err| Error::diffy_apply_patch(file_path, err, &completed_patch))?;
-	Ok(new_content)
+	Ok((new_content, tier))
 }

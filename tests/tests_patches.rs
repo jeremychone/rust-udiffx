@@ -127,7 +127,7 @@ fn run_test_scenario(folder: &str) -> Result<String> {
 				content: patch_content, ..
 			} => {
 				content = match apply_patch(original_path.as_str(), &content, &patch_content.content) {
-					Ok(content) => content,
+					Ok((content, _)) => content,
 					Err(err) => {
 						// println!("Error for {folder} scenario:\n{err}");
 						return Err(format!("scenario {folder} failed\n{err}").into());

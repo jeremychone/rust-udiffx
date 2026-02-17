@@ -18,6 +18,7 @@ pub use extract::*;
 pub use file_changes::*;
 pub use file_directives::*;
 pub use files_context::load_files_context;
+pub use patch_completer::MatchTier;
 
 // -- feature prompt
 #[cfg(feature = "prompt")]
