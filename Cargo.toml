@@ -1,6 +1,6 @@
 [package]
 name = "udiffx"
-version = "0.1.13-WIP"
+version = "0.1.13"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Parse and apply LLM-optimized unified diff + XML file changes"
