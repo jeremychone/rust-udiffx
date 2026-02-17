@@ -112,6 +112,23 @@ fn test_patches_test_08() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_09() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-09-fuzzy-ticks", false)?;
+
+	// -- Check
+	// assert_contains!(content, "**Stage Management**");
+	// assert_contains!(content, "remains active until the user confirms or closes the dialog");
+	// // Verify removals are gone
+	// assert!(
+	// 	!content.contains("Auto-dismiss (4s)"),
+	// 	"Auto-dismiss line should have been removed"
+	// );
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {

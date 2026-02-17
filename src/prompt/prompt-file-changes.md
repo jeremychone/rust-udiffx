@@ -78,7 +78,7 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
  (context line - exact copy of original, prefixed with a space)
 -(removal line - exact copy of original, prefixed with -)
 +(addition line - new content, prefixed with +)
- (context line)
+ (context line - if needed)
 </FILE_PATCH>
 ````
 

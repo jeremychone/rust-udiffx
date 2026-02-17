@@ -1,0 +1,18 @@
+
+### Interaction
+- `mouse_evt()`, `last_mouse_evt()`, `is_mouse_up_only()`.
+- `set_action(Action)`, `trigger_redraw()`, `should_be_pinged()`.
+
+## Lifecycle & Timeouts
+
+Time-based state transitions and expirations are primarily managed in `src/tui/core/app_state/state_processor.rs`.
+
+- **Auto-dismiss (4s)**: `AppStage::Installed` reverts to `Normal` after 4,000,000 microseconds (managed in `process_stage`).
+- **Timed Popups**: `PopupMode::Timed(Duration)` expiration (managed in `process_app_state`).
+- **Keep-Alive**: `AppState::should_be_pinged()` (in `app_state_base.rs`) determines if the TUI should continue receiving `AppEvent::Tick` events when idle.
+- **Timer Engine**: `src/tui/core/ping_timer.rs` provides the debounced 100ms background ticker that drives these transitions.
+
+### Scrolling
+- `ScrollIden`: `RunsNav`, `TasksNav`, `TaskContent`, `OverviewContent`.
+- `set_scroll_area(ScrollIden, Rect)`, `set_scroll(ScrollIden, u16)`.
+- `clamp_scroll(ScrollIden, line_count) -> u16`.
