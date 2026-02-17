@@ -18,7 +18,7 @@ To balance accuracy with resilience, the patch completion engine employs a three
 | ---- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | **Strict**    | Character-for-character exact match. No trimming or normalization is performed. This provides the highest confidence.                        |
 | 2    | **Resilient** | Case-sensitive match using trimmed lines, normalized whitespace (multiple spaces collapsed to one), and suffix matching for truncated lines. |
-| 3    | **Fuzzy**     | Same as Resilient tier but performed case-insensitively. This handles LLM casing discrepancies in headers or comments.                       |
+| 3    | **Fuzzy**     | Same as Resilient tier but performed case-insensitively. This handles LLM casing discrepancies and ignores inline code backticks (`).        |
 
 ### Execution Flow
 
