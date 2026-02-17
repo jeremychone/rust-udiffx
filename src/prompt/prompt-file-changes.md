@@ -56,16 +56,16 @@ Modifies an existing file using a simplified, numberless unified diff format.
 
 Every line in a hunk body **must** start with one of exactly three prefix characters:
 
-| Prefix | Meaning                   | Description                                          |
-| ------ | ------------------------- | ---------------------------------------------------- |
-| ` `    | Context (space character) | Unchanged line; must match the original file exactly |
-| `-`    | Removal                   | Line to remove; must match the original file exactly |
-| `+`    | Addition                  | Line to add                                          |
+| Prefix | Meaning                   | Description                                                            |
+| ------ | ------------------------- | ---------------------------------------------------------------------- |
+| ` `    | Context (space character) | Unchanged surrounding line; must match the original file exactly       |
+| `-`    | Removal                   | Line to remove; must match the original file exactly                   |
+| `+`    | Addition                  | Line to add                                                            |
 
 **Critical rules for hunk body lines:**
 
 - Every line must begin with one of these three prefix characters. There are no exceptions.
-- Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file, including all leading/trailing whitespace and indentation.
+- Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file. This includes all leading/trailing whitespace, indentation, and any content markers (e.g., Markdown bullet points like `-`, `*`, or `+`, and numbered list markers like `1.`).
 - If the original line has 4 spaces of indentation, the context line must be ` ` (space prefix) followed by those exact 4 spaces, resulting in 5 characters before the content.
 - Minimize the number of context lines to reduce the chance of mismatch. Include only enough context to uniquely identify the location.
 - Addition lines (`+` prefix) contain the new content to insert.
