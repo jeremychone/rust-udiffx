@@ -111,6 +111,16 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 
 // region:    --- Support
 
+/// Checks if a trimmed line is a Markdown heading.
+fn is_markdown_heading(s: &str) -> bool {
+	s.starts_with('#')
+}
+
+/// Strips the leading `#` characters and subsequent whitespace from a Markdown heading.
+fn strip_markdown_heading(s: &str) -> &str {
+	s.trim_start_matches('#').trim_start()
+}
+
 /// Minimum length for a patch context fragment to be eligible for suffix matching.
 /// This prevents very short strings (e.g., `"x"`) from false-positive matching.
 const SUFFIX_MATCH_MIN_LEN: usize = 10;
@@ -181,6 +191,9 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 			}
 			orig_trimmed == p_trimmed
 				|| normalize_ws(orig_trimmed) == normalize_ws(p_trimmed)
+				|| (is_markdown_heading(orig_trimmed)
+					&& is_markdown_heading(p_trimmed)
+					&& normalize_ws(strip_markdown_heading(orig_trimmed)) == normalize_ws(strip_markdown_heading(p_trimmed)))
 				|| suffix_match(orig_trimmed, p_trimmed, false)
 		}
 		MatchTier::Fuzzy => {
@@ -191,6 +204,10 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 			}
 			orig_trimmed.to_lowercase() == p_trimmed.to_lowercase()
 				|| normalize_ws(orig_trimmed).to_lowercase() == normalize_ws(p_trimmed).to_lowercase()
+				|| (is_markdown_heading(orig_trimmed)
+					&& is_markdown_heading(p_trimmed)
+					&& normalize_ws(strip_markdown_heading(orig_trimmed)).to_lowercase()
+						== normalize_ws(strip_markdown_heading(p_trimmed)).to_lowercase())
 				|| suffix_match(orig_trimmed, p_trimmed, true)
 		}
 	}
@@ -266,6 +283,23 @@ fn search_candidates_for_tier(
 		}
 
 		if matches && !current_matches.is_empty() {
+			// -- Validation: Ensure at least one non-blank line matched in-file.
+			// This prevents matching only cosmetic blank lines followed by EOF overhang.
+			let significant_in_file_match_count = current_matches
+				.iter()
+				.filter(|(hl_idx, _)| !hunk_lines[*hl_idx].trim().is_empty())
+				.count();
+
+			if significant_in_file_match_count == 0 {
+				continue;
+			}
+
+			// -- Validation: If we have overhang, ensure we have more in-file matches than overhang.
+			// This prevents matching a single line near EOF and treating the rest of the hunk as overhang.
+			if !current_overhang.is_empty() && current_overhang.len() >= significant_in_file_match_count {
+				continue;
+			}
+
 			candidates.push(CandidateMatch {
 				idx: i,
 				tier,
