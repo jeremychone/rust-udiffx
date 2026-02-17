@@ -91,7 +91,20 @@ fn test_patches_test_08() -> Result<()> {
 	let content = run_test_scenario("test-08-missmatch")?;
 
 	// -- Check
-	println!("->> \n{content}");
+	assert_contains!(content, "WorkConfirm(Id), WorkCancel(Id), Run(RunArgs),");
+	assert_contains!(content, "WorkConfirm(Id), WorkCancel(Id), WorkRun(Id), WorkClose(Id),");
+	assert_contains!(content, "### Formatting & UI Getters (impl_fmt.rs & impl_model_state.rs)");
+	assert_contains!(content, "### Model State Helpers");
+	assert_contains!(content, "### Lifecycle & State Processing");
+	// Verify removals are gone
+	assert!(
+		!content.contains("- **Auto-dismiss (4s)**"),
+		"Auto-dismiss line should have been removed"
+	);
+	assert!(
+		!content.contains("### formatting & UI Getters"),
+		"Lowercase 'formatting' heading should have been removed"
+	);
 
 	Ok(())
 }

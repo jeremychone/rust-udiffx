@@ -594,6 +594,74 @@ fn greet() {
 
 		Ok(())
 	}
+
+	/// Verifies that when a strict match exists, it is preferred over a resilient match
+	/// at a different position.
+	#[test]
+	fn test_patch_completer_complete_strict_match_preferred() -> Result<()> {
+		// -- Setup & Fixtures
+		// Line 1 has extra leading spaces (only matches via trimmed/resilient).
+		// Line 4 matches strictly (exact same text as patch context).
+		let original = "\
+    fn do_work() {
+    old_call();
+    }
+fn do_work() {
+    old_call();
+}
+";
+		// Patch context has no leading indentation, matching the second block strictly.
+		let patch = "@@\n fn do_work() {\n-    old_call();\n+    new_call();\n }\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		// Should match the second block (line 4) via strict, not the first (line 1) via resilient.
+		assert!(completed.contains("@@ -4,3 +4,3 @@"));
+		assert!(completed.contains("+    new_call();"));
+
+		Ok(())
+	}
+
+	/// Verifies that a casing mismatch in context lines is resolved by the fuzzy tier.
+	#[test]
+	fn test_patch_completer_complete_case_insensitive_fallback() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "## Section Title\nSome content here.\nMore content.\n";
+		// Patch context uses different casing ("section title" vs "Section Title").
+		let patch = "@@\n ## section title\n-Some content here.\n+Replaced content here.\n More content.\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -1,3 +1,3 @@"));
+		assert!(completed.contains("+Replaced content here."));
+
+		Ok(())
+	}
+
+	/// Verifies that when a resilient match exists (whitespace difference), fuzzy is not needed.
+	/// Indirectly confirmed by the correct match position and successful patch application.
+	#[test]
+	fn test_patch_completer_complete_fuzzy_not_used_when_resilient_matches() -> Result<()> {
+		// -- Setup & Fixtures
+		// Original has extra spaces; patch context has single spaces.
+		// This should match at resilient tier (whitespace normalization), not fuzzy.
+		let original = "fn   example()  {\n    let x = 1;\n    let y = 2;\n}\n";
+		let patch = "@@\n fn example() {\n-    let x = 1;\n+    let x = 42;\n     let y = 2;\n }\n";
+
+		// -- Exec
+		let completed = complete(original, patch)?;
+
+		// -- Check
+		// Should match at line 1 via resilient tier (normalized whitespace).
+		assert!(completed.contains("@@ -1,4 +1,4 @@"));
+		assert!(completed.contains("+    let x = 42;"));
+
+		Ok(())
+	}
 }
 
 // endregion: --- Tests
