@@ -10,7 +10,7 @@ type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tes
 #[test]
 fn test_patches_test_01() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-01-crlf")?;
+	let content = run_test_scenario("test-01-crlf", false)?;
 
 	// -- Check
 	assert_contains!(content, "edition = \"2024\"");
@@ -22,7 +22,7 @@ fn test_patches_test_01() -> Result<()> {
 #[test]
 fn test_patches_test_02() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-02-append")?;
+	let content = run_test_scenario("test-02-append", false)?;
 
 	// -- Check
 	assert!(content.contains("\n\nline 3"));
@@ -33,7 +33,7 @@ fn test_patches_test_02() -> Result<()> {
 #[test]
 fn test_patches_test_03() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-03-no-matching-empty-line")?;
+	let content = run_test_scenario("test-03-no-matching-empty-line", false)?;
 
 	// -- Check
 	assert_contains!(content, "init_profiles_if_missing");
@@ -44,7 +44,7 @@ fn test_patches_test_03() -> Result<()> {
 #[test]
 fn test_patches_test_04() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-04-no-end-line")?;
+	let content = run_test_scenario("test-04-no-end-line", false)?;
 
 	// -- Check
 	assert_contains!(content, " Improve Patch Completer");
@@ -55,7 +55,7 @@ fn test_patches_test_04() -> Result<()> {
 #[test]
 fn test_patches_test_05() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-05-missplaced")?;
+	let content = run_test_scenario("test-05-missplaced", false)?;
 
 	// -- Check
 	assert_contains!(content, "## Request: Ensure Alacritty");
@@ -66,7 +66,7 @@ fn test_patches_test_05() -> Result<()> {
 #[test]
 fn test_patches_test_06() -> Result<()> {
 	// -- Exec
-	let res = run_test_scenario("test-06-no-match");
+	let res = run_test_scenario("test-06-no-match", true);
 
 	// -- Check
 	let _err = res.err().ok_or("Should have failed")?;
@@ -77,7 +77,7 @@ fn test_patches_test_06() -> Result<()> {
 #[test]
 fn test_patches_test_07() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-07-new-line")?;
+	let content = run_test_scenario("test-07-new-line", false)?;
 
 	// -- Check
 	assert_contains!(content, "## Request: Unified Tool");
@@ -88,12 +88,15 @@ fn test_patches_test_07() -> Result<()> {
 #[test]
 fn test_patches_test_08() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-08-missmatch")?;
+	let content = run_test_scenario("test-08-missmatch", false)?;
 
 	// -- Check
 	assert_contains!(content, "WorkConfirm(Id), WorkCancel(Id), Run(RunArgs),");
 	assert_contains!(content, "WorkConfirm(Id), WorkCancel(Id), WorkRun(Id), WorkClose(Id),");
-	assert_contains!(content, "### Formatting & UI Getters (impl_fmt.rs & impl_model_state.rs)");
+	assert_contains!(
+		content,
+		"### Formatting & UI Getters (impl_fmt.rs & impl_model_state.rs)"
+	);
 	assert_contains!(content, "### Model State Helpers");
 	assert_contains!(content, "### Lifecycle & State Processing");
 	// Verify removals are gone
@@ -111,7 +114,7 @@ fn test_patches_test_08() -> Result<()> {
 
 // region:    --- Support
 
-fn run_test_scenario(folder: &str) -> Result<String> {
+fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
 	let folder_path = SPath::new(format!("tests/data/test-patches/{folder}"));
 	let original_path = folder_path.join("original.txt");
 	let original = std::fs::read_to_string(&original_path)?;
@@ -129,7 +132,9 @@ fn run_test_scenario(folder: &str) -> Result<String> {
 				content = match apply_patch(original_path.as_str(), &content, &patch_content.content) {
 					Ok((content, _)) => content,
 					Err(err) => {
-						// println!("Error for {folder} scenario:\n{err}");
+						if !should_fail {
+							println!("Error for {folder} scenario:\n{err}");
+						}
 						return Err(format!("scenario {folder} failed\n{err}").into());
 					}
 				};
