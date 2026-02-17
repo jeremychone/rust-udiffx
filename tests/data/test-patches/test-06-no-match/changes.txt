@@ -3,7 +3,7 @@
 <FILE_PATCH file_path="README.md">
 ```md
 @@
- - It does not have any `\\?\` on Windows.
+ - DDIt does not have any `\\?\` on Windows.
 
 -The SFile is a File struct that contains an SPath.
 -

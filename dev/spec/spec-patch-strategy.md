@@ -14,11 +14,20 @@ The `FILE_PATCH` directive uses a numberless version of the Unified Diff format.
 
 To balance accuracy with resilience, the patch completion engine employs a three-tier matching strategy. It attempts to find a match using the strictest criteria first, falling back to more lenient tiers only if no candidates are found.
 
-| Tier | Name          | Description                                                                                                                                  |
-| ---- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | **Strict**    | Character-for-character exact match. No trimming or normalization is performed. This provides the highest confidence.                        |
-| 2    | **Resilient** | Case-sensitive match using trimmed lines, normalized whitespace (multiple spaces collapsed to one), and suffix matching for truncated lines. |
-| 3    | **Fuzzy**     | Same as Resilient tier but performed case-insensitively. This handles LLM casing discrepancies and ignores inline code backticks (`).        |
+- **Stage 1: Strict** - Performs a character-for-character exact match of the entire line.
+  - No trimming, normalization, or casing adjustments are performed.
+  - This tier provides the highest confidence and is processed first to ensure well-formed patches are applied exactly as intended.
+
+- **Stage 2: Resilient** - Performs case-sensitive matching with the following normalization:
+  - **Trimming**: Leading and trailing whitespace is ignored.
+  - **Whitespace Normalization**: Multiple consecutive spaces or tabs are collapsed into a single space.
+  - **Markdown Heading Normalization**: Heading markers (e.g., `### `) and their leading/trailing whitespace are normalized to allow for variation in heading levels or spacing.
+  - **Suffix Matching**: If a context fragment is at least 10 characters long, it matches if it appears at the end of an original line. This accommodates long lines that the LLM may have truncated.
+
+- **Stage 3: Fuzzy** - Performs all normalizations from the Resilient tier and adds:
+  - **Case-Insensitivity**: All comparisons are performed on lowercased versions of the lines.
+  - **Inline Formatting Resilience**: Strips inline backticks (`` ` ``) from both the original and patch lines to resolve discrepancies in Markdown code formatting.
+  - **Trailing Punctuation Resilience**: Ignores trailing ASCII punctuation (like periods or commas) that LLMs often add or omit inconsistently at the end of sentences.
 
 ### Execution Flow
 
