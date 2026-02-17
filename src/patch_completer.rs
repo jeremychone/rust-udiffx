@@ -1,6 +1,17 @@
 use crate::{Error, Result};
 use std::borrow::Cow;
 
+// region:    --- Types
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum MatchTier {
+	Strict,
+	Resilient,
+	Fuzzy,
+}
+
+// endregion: --- Types
+
 /// Collapses runs of whitespace into a single space for normalized comparison.
 fn normalize_ws(s: &str) -> String {
 	s.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -117,9 +128,17 @@ fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, is
 /// Checks whether one trimmed line is a suffix of the other.
 /// Only applies when the shorter fragment is long enough to be meaningful,
 /// preventing false positives from very short context lines.
-fn suffix_match(orig_trimmed: &str, patch_trimmed: &str) -> bool {
-	let orig_norm = normalize_ws(orig_trimmed);
-	let patch_norm = normalize_ws(patch_trimmed);
+fn suffix_match(orig_trimmed: &str, patch_trimmed: &str, case_insensitive: bool) -> bool {
+	let orig_norm = if case_insensitive {
+		normalize_ws(orig_trimmed).to_lowercase()
+	} else {
+		normalize_ws(orig_trimmed)
+	};
+	let patch_norm = if case_insensitive {
+		normalize_ws(patch_trimmed).to_lowercase()
+	} else {
+		normalize_ws(patch_trimmed)
+	};
 	if patch_norm.len() >= SUFFIX_MATCH_MIN_LEN && orig_norm.ends_with(&patch_norm) {
 		return true;
 	}
@@ -127,6 +146,37 @@ fn suffix_match(orig_trimmed: &str, patch_trimmed: &str) -> bool {
 		return true;
 	}
 	false
+}
+
+/// Checks whether an original line matches a patch line at the given tier.
+///
+/// - **Strict**: Character-for-character exact match. No trimming or normalization.
+/// - **Resilient**: Trimmed comparison, normalized whitespace, and suffix match (case-sensitive).
+/// - **Fuzzy**: Same as Resilient but all comparisons are case-insensitive.
+fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
+	match tier {
+		MatchTier::Strict => orig_line == p_line,
+		MatchTier::Resilient => {
+			let orig_trimmed = orig_line.trim();
+			let p_trimmed = p_line.trim();
+			if orig_trimmed.is_empty() || p_trimmed.is_empty() {
+				return orig_trimmed == p_trimmed;
+			}
+			orig_trimmed == p_trimmed
+				|| normalize_ws(orig_trimmed) == normalize_ws(p_trimmed)
+				|| suffix_match(orig_trimmed, p_trimmed, false)
+		}
+		MatchTier::Fuzzy => {
+			let orig_trimmed = orig_line.trim();
+			let p_trimmed = p_line.trim();
+			if orig_trimmed.is_empty() || p_trimmed.is_empty() {
+				return orig_trimmed == p_trimmed;
+			}
+			orig_trimmed.to_lowercase() == p_trimmed.to_lowercase()
+				|| normalize_ws(orig_trimmed).to_lowercase() == normalize_ws(p_trimmed).to_lowercase()
+				|| suffix_match(orig_trimmed, p_trimmed, true)
+		}
+	}
 }
 
 fn compute_hunk_bounds(
@@ -194,7 +244,7 @@ fn compute_hunk_bounds(
 				} else {
 					orig_trimmed == p_line_trimmed
 						|| normalize_ws(orig_trimmed) == normalize_ws(p_line_trimmed)
-						|| suffix_match(orig_trimmed, p_line_trimmed)
+						|| suffix_match(orig_trimmed, p_line_trimmed, false)
 				};
 
 				if line_match {
