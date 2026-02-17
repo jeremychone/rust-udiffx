@@ -102,6 +102,7 @@ const SUFFIX_MATCH_MIN_LEN: usize = 10;
 /// Represents a candidate match found during hunk position search.
 struct CandidateMatch {
 	idx: usize,
+	tier: MatchTier,
 	overhang_hl_indices: Vec<usize>,
 	skipped_hl_indices: Vec<usize>,
 	converted_to_add_indices: Vec<usize>,
@@ -109,20 +110,6 @@ struct CandidateMatch {
 
 	/// Number of context/removal lines that matched without needing normalization or suffix.
 	exact_ws_count: usize,
-}
-
-/// Scores a candidate match. Higher is better.
-/// Criteria:
-///   - Prefer more exact whitespace matches (no normalization needed).
-///   - Prefer match closest to the expected location (`search_from`).
-fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, isize) {
-	let distance = match candidate.idx >= search_from {
-		true => candidate.idx - search_from,
-		false => search_from - candidate.idx,
-	};
-	// Primary: exact whitespace count (higher is better)
-	// Secondary: negative distance (closer is better, so negate)
-	(candidate.exact_ws_count, -(distance as isize))
 }
 
 /// Checks whether one trimmed line is a suffix of the other.
@@ -146,6 +133,20 @@ fn suffix_match(orig_trimmed: &str, patch_trimmed: &str, case_insensitive: bool)
 		return true;
 	}
 	false
+}
+
+/// Scores a candidate match. Higher is better.
+/// Criteria:
+///   - Prefer more exact whitespace matches (no normalization needed).
+///   - Prefer match closest to the expected location (`search_from`).
+fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, isize) {
+	let distance = match candidate.idx >= search_from {
+		true => candidate.idx - search_from,
+		false => search_from - candidate.idx,
+	};
+	// Primary: exact whitespace count (higher is better)
+	// Secondary: negative distance (closer is better, so negate)
+	(candidate.exact_ws_count, -(distance as isize))
 }
 
 /// Checks whether an original line matches a patch line at the given tier.
@@ -179,23 +180,13 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 	}
 }
 
-fn compute_hunk_bounds(
+/// Searches for candidate matches at a given tier, returning all found candidates.
+fn search_candidates_for_tier(
 	orig_lines: &[&str],
 	hunk_lines: &[&str],
 	search_from: usize,
-) -> Result<(usize, usize, usize, Vec<String>)> {
-	// -- Pre-check for pattern existence
-	let context_lines_count = hunk_lines.iter().filter(|l| !l.starts_with('+')).count();
-
-	// -- If no context/removal lines, assume append to end
-	if context_lines_count == 0 {
-		let added_count = hunk_lines.len();
-		let final_hunk_lines = hunk_lines.iter().map(|s| s.to_string()).collect();
-		return Ok((orig_lines.len() + 1, 0, added_count, final_hunk_lines));
-	}
-
-	// -- Greedy search for the pattern
-	// -- Collect all candidate matches, then pick the best one
+	tier: MatchTier,
+) -> Vec<CandidateMatch> {
 	let mut candidates: Vec<CandidateMatch> = Vec::new();
 
 	for i in search_from..=orig_lines.len() {
@@ -213,11 +204,10 @@ fn compute_hunk_bounds(
 			}
 
 			let p_line = if hl_line.len() > 1 { &hl_line[1..] } else { "" };
-			let p_line_trimmed = p_line.trim();
 
 			let target_idx = i + orig_off;
 
-			if p_line_trimmed.is_empty() {
+			if p_line.trim().is_empty() {
 				// If the patch has a blank line...
 				if target_idx < orig_lines.len() && orig_lines[target_idx].trim().is_empty() {
 					// ... and original has a blank line: Match.
@@ -236,18 +226,8 @@ fn compute_hunk_bounds(
 				}
 			} else if target_idx < orig_lines.len() {
 				let orig_line = orig_lines[target_idx];
-				let orig_trimmed = orig_line.trim();
 
-				// Resilient match logic:
-				let line_match = if orig_trimmed.is_empty() || p_line_trimmed.is_empty() {
-					orig_trimmed == p_line_trimmed
-				} else {
-					orig_trimmed == p_line_trimmed
-						|| normalize_ws(orig_trimmed) == normalize_ws(p_line_trimmed)
-						|| suffix_match(orig_trimmed, p_line_trimmed, false)
-				};
-
-				if line_match {
+				if line_matches(orig_line, p_line, tier) {
 					// Track whether this was an exact whitespace match (no normalization needed)
 					if orig_line == p_line {
 						current_exact_ws_count += 1;
@@ -272,12 +252,42 @@ fn compute_hunk_bounds(
 		if matches && !current_matches.is_empty() {
 			candidates.push(CandidateMatch {
 				idx: i,
+				tier,
 				overhang_hl_indices: current_overhang,
 				skipped_hl_indices: current_skipped,
 				converted_to_add_indices: current_converted_to_add,
 				matched_orig_lines: current_matches,
 				exact_ws_count: current_exact_ws_count,
 			});
+		}
+	}
+
+	candidates
+}
+
+fn compute_hunk_bounds(
+	orig_lines: &[&str],
+	hunk_lines: &[&str],
+	search_from: usize,
+) -> Result<(usize, usize, usize, Vec<String>)> {
+	// -- Pre-check for pattern existence
+	let context_lines_count = hunk_lines.iter().filter(|l| !l.starts_with('+')).count();
+
+	// -- If no context/removal lines, assume append to end
+	if context_lines_count == 0 {
+		let added_count = hunk_lines.len();
+		let final_hunk_lines = hunk_lines.iter().map(|s| s.to_string()).collect();
+		return Ok((orig_lines.len() + 1, 0, added_count, final_hunk_lines));
+	}
+
+	// -- Tiered search: stop at the first tier that yields candidates
+	let tiers = [MatchTier::Strict, MatchTier::Resilient, MatchTier::Fuzzy];
+	let mut candidates: Vec<CandidateMatch> = Vec::new();
+
+	for tier in tiers {
+		candidates = search_candidates_for_tier(orig_lines, hunk_lines, search_from, tier);
+		if !candidates.is_empty() {
+			break;
 		}
 	}
 
