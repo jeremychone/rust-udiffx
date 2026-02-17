@@ -10,6 +10,14 @@ pub enum MatchTier {
 	Fuzzy,
 }
 
+struct HunkBounds {
+	old_start: usize,
+	old_count: usize,
+	new_count: usize,
+	final_hunk_lines: Vec<String>,
+	tier: Option<MatchTier>,
+}
+
 // endregion: --- Types
 
 /// Collapses runs of whitespace into a single space for normalized comparison.
@@ -67,11 +75,14 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 			}
 
 			// Compute line numbers
-			let (old_start, old_count, new_count, final_hunk_lines, tier) =
-				compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
+			let hunk_bounds = compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
+			let old_start = hunk_bounds.old_start;
+			let old_count = hunk_bounds.old_count;
+			let new_count = hunk_bounds.new_count;
+			let final_hunk_lines = hunk_bounds.final_hunk_lines;
 			let new_start = (old_start as isize + total_delta) as usize;
 
-			if let Some(t) = tier {
+			if let Some(t) = hunk_bounds.tier {
 				max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
 			}
 
@@ -270,11 +281,7 @@ fn search_candidates_for_tier(
 	candidates
 }
 
-fn compute_hunk_bounds(
-	orig_lines: &[&str],
-	hunk_lines: &[&str],
-	search_from: usize,
-) -> Result<(usize, usize, usize, Vec<String>, Option<MatchTier>)> {
+fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: usize) -> Result<HunkBounds> {
 	// -- Pre-check for pattern existence
 	let context_lines_count = hunk_lines.iter().filter(|l| !l.starts_with('+')).count();
 
@@ -282,7 +289,13 @@ fn compute_hunk_bounds(
 	if context_lines_count == 0 {
 		let added_count = hunk_lines.len();
 		let final_hunk_lines = hunk_lines.iter().map(|s| s.to_string()).collect();
-		return Ok((orig_lines.len() + 1, 0, added_count, final_hunk_lines, None));
+		return Ok(HunkBounds {
+			old_start: orig_lines.len() + 1,
+			old_count: 0,
+			new_count: added_count,
+			final_hunk_lines,
+			tier: None,
+		});
 	}
 
 	// -- Tiered search: stop at the first tier that yields candidates
@@ -361,7 +374,13 @@ fn compute_hunk_bounds(
 		}
 	}
 
-	Ok((idx + 1, old_count, new_count, final_hunk_lines, Some(tier)))
+	Ok(HunkBounds {
+		old_start: idx + 1,
+		old_count,
+		new_count,
+		final_hunk_lines,
+		tier: Some(tier),
+	})
 }
 
 // endregion: --- Support
