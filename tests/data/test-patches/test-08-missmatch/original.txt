@@ -107,8 +107,6 @@ Time-based state transitions and expirations are primarily managed in `src/tui/c
 
 ### LinkZones (src/tui/core/types/link_zone.rs)
 Used to handle hover/click on specific text regions.
-- `start_group() -> u32`: For multi-line section-wide hover.
-- `push_group_zone(...)`: Registers a zone belonging to a group.
 - `is_mouse_over(area, scroll, mouse_evt, spans) -> Option<&mut [Span]>`.
 
 ### Popup (src/tui/view/popup_view.rs)

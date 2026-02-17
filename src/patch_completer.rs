@@ -3,6 +3,10 @@ use std::borrow::Cow;
 
 // region:    --- Types
 
+/// Maximum lines to search away from the expected position for lenient (Resilient/Fuzzy) matches.
+/// This prevents a hunk from "drifting" too far and causing subsequent hunks to fail.
+const MAX_PROXIMITY_FOR_LENIENT: usize = 100;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MatchTier {
 	Strict,
@@ -193,22 +197,29 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 				|| normalize_ws(orig_trimmed) == normalize_ws(p_trimmed)
 				|| (is_markdown_heading(orig_trimmed)
 					&& is_markdown_heading(p_trimmed)
-					&& normalize_ws(strip_markdown_heading(orig_trimmed)) == normalize_ws(strip_markdown_heading(p_trimmed)))
+					&& normalize_ws(strip_markdown_heading(orig_trimmed))
+						== normalize_ws(strip_markdown_heading(p_trimmed)))
 				|| suffix_match(orig_trimmed, p_trimmed, false)
 		}
 		MatchTier::Fuzzy => {
-			let orig_trimmed = orig_line.trim();
-			let p_trimmed = p_line.trim();
-			if orig_trimmed.is_empty() || p_trimmed.is_empty() {
-				return orig_trimmed == p_trimmed;
+			let o_t = orig_line.trim();
+			let p_t = p_line.trim();
+			if o_t.is_empty() || p_t.is_empty() {
+				return o_t == p_t;
 			}
-			orig_trimmed.to_lowercase() == p_trimmed.to_lowercase()
-				|| normalize_ws(orig_trimmed).to_lowercase() == normalize_ws(p_trimmed).to_lowercase()
-				|| (is_markdown_heading(orig_trimmed)
-					&& is_markdown_heading(p_trimmed)
-					&& normalize_ws(strip_markdown_heading(orig_trimmed)).to_lowercase()
-						== normalize_ws(strip_markdown_heading(p_trimmed)).to_lowercase())
-				|| suffix_match(orig_trimmed, p_trimmed, true)
+			let o_l = o_t.to_lowercase();
+			let p_l = p_t.to_lowercase();
+
+			o_l == p_l
+				|| normalize_ws(&o_l) == normalize_ws(&p_l)
+				|| (is_markdown_heading(o_t)
+					&& is_markdown_heading(p_t)
+					&& normalize_ws(strip_markdown_heading(o_t)).to_lowercase()
+						== normalize_ws(strip_markdown_heading(p_t)).to_lowercase())
+				|| suffix_match(o_t, p_t, true)
+				// Also check if they match ignoring trailing punctuation (common LLM error)
+				|| o_l.trim_end_matches(|c: char| c.is_ascii_punctuation())
+					== p_l.trim_end_matches(|c: char| c.is_ascii_punctuation())
 		}
 	}
 }
@@ -223,6 +234,15 @@ fn search_candidates_for_tier(
 	let mut candidates: Vec<CandidateMatch> = Vec::new();
 
 	for i in search_from..=orig_lines.len() {
+		// -- Proximity Check: If we've drifted too far in a lenient tier, skip this candidate.
+		let distance = match i >= search_from {
+			true => i - search_from,
+			false => search_from - i,
+		};
+		if tier > MatchTier::Strict && distance > MAX_PROXIMITY_FOR_LENIENT {
+			continue;
+		}
+
 		let mut matches = true;
 		let mut current_overhang = Vec::new();
 		let current_skipped = Vec::new();
@@ -296,8 +316,12 @@ fn search_candidates_for_tier(
 
 			// -- Validation: If we have overhang, ensure we have more in-file matches than overhang.
 			// This prevents matching a single line near EOF and treating the rest of the hunk as overhang.
-			if !current_overhang.is_empty() && current_overhang.len() >= significant_in_file_match_count {
-				continue;
+			if !current_overhang.is_empty() {
+				// We require at least 2 in-file matches for any overhang,
+				// and in-file matches must be greater than overhang.
+				if significant_in_file_match_count < 2 || current_overhang.len() >= significant_in_file_match_count {
+					continue;
+				}
 			}
 
 			candidates.push(CandidateMatch {
