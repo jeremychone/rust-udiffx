@@ -80,7 +80,8 @@ Format:
 To ensure better readability and compatibility with markdown-aware tools, content within `FILE_NEW` and `FILE_PATCH` tags can optionally be wrapped in triple backtick code fences.
 
 - The applier will automatically detect and strip these fences.
-- One level of leading/trailing newline is typically ignored for both fenced and non-fenced content.
+- The first leading newline is automatically stripped from the tag content to accommodate formatting.
+- For fenced content, the code inside the fence is extracted, and one leading newline inside the fence is also stripped if present.
 
 Example with code fence:
 ```xml

@@ -41,6 +41,8 @@ When multiple candidates are found within the same tier, a scoring system determ
 
 The search for hunk context begins at the end of the previously applied hunk (tracking cumulative line-count deltas). Proximity to this expected location is a key factor in scoring to prevent matching similar code blocks far apart in a file.
 
+Note: For Resilient and Fuzzy tiers, a proximity limit of 100 lines from the expected position is enforced to prevent excessive drift and maintain performance.
+
 ### Exact Whitespace Count
 
 Within the Resilient and Fuzzy tiers, candidates that have more "exact" matches (where the line matched without needing normalization) are scored higher. This ensures that even in lenient tiers, the most visually similar block is preferred.
