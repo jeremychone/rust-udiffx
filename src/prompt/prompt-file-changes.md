@@ -29,21 +29,17 @@ You may include explanation before or after the `<FILE_CHANGES>` block. If no ch
 
 Creates a new file. The content inside the code fence is the full file content.
 
-````
 <FILE_NEW file_path="path/to/file.ext">
-(full file contents)
+_full_file_contents_
 </FILE_NEW>
-````
 
 ### FILE_PATCH
 
 Modifies an existing file using a simplified, numberless unified diff format.
 
-````
 <FILE_PATCH file_path="path/to/file.ext">
-(patch_format)
+_patch_format_
 </FILE_PATCH>
-````
 
 #### Hunk header
 
@@ -72,7 +68,6 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 
 #### FILE_PATCH format
 
-````
 <FILE_PATCH file_path="path/to/existing_file.ext">
 @@
  (context line - exact copy of original, prefixed with a space)
@@ -80,19 +75,14 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 +(addition line - new content, prefixed with +)
  (context line - if needed)
 </FILE_PATCH>
-````
 
 ### FILE_RENAME
 
-````
 <FILE_RENAME from_path="old/path.ext" to_path="new/path.ext" />
-````
 
 ### FILE_DELETE
 
-```
 <FILE_DELETE file_path="path/to/file.ext" />
-````
 
 ### Complete Example
 
