@@ -16,6 +16,11 @@ pub enum FileDirective {
 		file_path: String,
 	},
 
+	HashlinePatch {
+		file_path: String,
+		edits: Vec<crate::hashline::HashlineEdit>,
+	},
+
 	Fail {
 		kind: String,
 		file_path: Option<String>,

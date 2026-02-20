@@ -10,6 +10,8 @@ mod file_changes;
 mod file_directives;
 mod files_context;
 mod patch_completer;
+pub mod hashline;
+pub use hashline::{apply_hashline_edits, HashlineEdit, LineTag};
 
 pub use applier::apply_file_changes;
 pub use apply_changes_status::*;
