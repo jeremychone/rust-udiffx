@@ -37,6 +37,9 @@ diffy = "0.4.2"
 markex = { version = "0.1.0" }
 # -- Others
 derive_more = { version = "2", features = ["from", "display"] }
+twox-hash = "2.1.2"
+regex = "1"
+once_cell = "1"
 
 [dev-dependencies]
 udiffx = { path = ".", features = ["test-support"] }

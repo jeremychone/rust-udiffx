@@ -12,12 +12,12 @@ IMPORTANT. There can be only one FILE_CHANGES tag per response. So make sure you
 
 ### Directives
 
-| Directive     | Purpose                                  |
-| ------------- | ---------------------------------------- |
-| `FILE_NEW`    | Create a new file                        |
-| `FILE_PATCH`  | Modify an existing file via unified diff |
-| `FILE_RENAME` | Rename or move a file                    |
-| `FILE_DELETE` | Delete a file                            |
+| Directive            | Purpose                                  |
+| -------------------- | ---------------------------------------- |
+| `FILE_NEW`           | Create a new file                        |
+| `FILE_HASHLINE_PATCH`| Modify a file via hashline references    |
+| `FILE_RENAME`        | Rename or move a file                    |
+| `FILE_DELETE`        | Delete a file                            |
 
 ### General Rules
 
@@ -34,48 +34,35 @@ Creates a new file. The content inside the code fence is the full file content.
 _full_file_contents_
 </FILE_NEW>
 
-### FILE_PATCH
+### FILE_HASHLINE_PATCH
 
-Modifies an existing file using a simplified, numberless unified diff format.
+Modifies an existing file using a line-addressable format based on content hashes.
 
-<FILE_PATCH file_path="path/to/file.ext">
-_patch_format_
-</FILE_PATCH>
+Each line in the file is identified by its 1-indexed line number and a short hexadecimal hash (e.g., `5#aa`). This combined `LINE#ID` reference ensures the edit targets the correct content and provides a staleness check.
 
-#### Hunk header
+#### Edit Operations
 
-- Use a single `@@` on its own line, with no line numbers.
-- Never use `@@ -35,26 +83,32 @@`; always just `@@`.
-- Do **not** include `---` / `+++` file header lines.
-- A single `FILE_PATCH` may contain multiple hunks, each starting with `@@`.
+| Format                  | Operation | Description                                                                 |
+| ----------------------- | --------- | --------------------------------------------------------------------------- |
+| `LINE#ID:CONTENT`       | Set       | Replaces the content of the specified line.                                 |
+| `LINE#ID-LINE#ID:CONTENT`| Replace   | Replaces a range of lines (inclusive) with the new content.                 |
+| `>+LINE#ID CONTENT`     | Append    | Inserts new content *after* the specified line.                             |
+| `<+LINE#ID CONTENT`     | Prepend   | Inserts new content *before* the specified line.                            |
 
-#### Hunk body line format
+**Critical rules for hashline edits:**
 
-Every line in a hunk body **must** start with one of exactly three prefix characters:
+- Use the exact `LINE#ID` provided in the `<FILE_CONTENT>` block.
+- Each edit must be on its own line within the `<FILE_HASHLINE_PATCH>` block.
+- For range replacements (`LINE#ID-LINE#ID`), the start line must be less than or equal to the end line.
+- You can include multiple edits for the same file in a single block.
 
-| Prefix | Meaning                   | Description                                                            |
-| ------ | ------------------------- | ---------------------------------------------------------------------- |
-| ` `    | Context (space character) | Unchanged surrounding line; must match the original file exactly       |
-| `-`    | Removal                   | Line to remove; must match the original file exactly                   |
-| `+`    | Addition                  | Line to add                                                            |
+#### FILE_HASHLINE_PATCH format
 
-**Critical rules for hunk body lines:**
-
-- Every line must begin with one of these three prefix characters. There are no exceptions.
-- Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file. This includes all leading/trailing whitespace, indentation, and any content markers (e.g., Markdown bullet points like `-`, `*`, or `+`, and numbered list markers like `1.`). Any deviation, even a single space or tab, will cause the patch to fail.
-- **Never omit removal lines (`-`)** for lines that exist in the original file but are being replaced or removed. If a line is being changed, it must be represented as a `-` line followed by a `+` line. Do not skip lines within the scope of a hunk.
-- Minimize the number of context lines to reduce the chance of mismatch. Include only enough context to uniquely identify the location.
-- Addition lines (`+` prefix) contain the new content to insert.
-
-#### FILE_PATCH format
-
-<FILE_PATCH file_path="path/to/existing_file.ext">
-@@
- (context line - exact copy of original, prefixed with a space)
--(removal line - exact copy of original, prefixed with -)
-+(addition line - new content, prefixed with +)
- (context line - if needed)
-</FILE_PATCH>
+<FILE_HASHLINE_PATCH file_path="path/to/existing_file.ext">
+5#aa:new content for line 5
+>+10#bb inserted after line 10
+15#cc-17#dd:replaces lines 15 through 17 with this text
+</FILE_HASHLINE_PATCH>
 
 ### FILE_RENAME
 
@@ -100,15 +87,11 @@ pub fn hello() {
 
 </FILE_NEW>
 
-<FILE_PATCH file_path="src/main.rs">
-@@
-+mod hello;
-+
- fn main() {
--    println!("Old Message");
-+    hello::hello();
- }
-</FILE_PATCH>
+<FILE_HASHLINE_PATCH file_path="src/main.rs">
+>+1#ZZ:mod hello;
+>+2#ZZ:
+5#ZZ:    hello::hello();
+</FILE_HASHLINE_PATCH>
 
 <FILE_RENAME from_path="docs/OLD_README.md" to_path="README.md" />
 
