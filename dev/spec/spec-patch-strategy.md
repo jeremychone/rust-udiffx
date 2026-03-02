@@ -41,7 +41,7 @@ When multiple candidates are found within the same tier, a scoring system determ
 
 The search for hunk context begins at the end of the previously applied hunk (tracking cumulative line-count deltas). Proximity to this expected location is a key factor in scoring to prevent matching similar code blocks far apart in a file.
 
-Note: For Resilient and Fuzzy tiers, a proximity limit of 100 lines from the expected position is enforced to prevent excessive drift and maintain performance.
+Note: For Resilient and Fuzzy tiers, a proximity limit is enforced to prevent excessive drift and maintain performance. This limit is set to 1,000 lines from the expected position, except for the first hunk where a window of up to 5,000 lines is allowed to facilitate anchoring in large files.
 
 ### Exact Whitespace Count
 
@@ -57,10 +57,11 @@ If a context line in a patch is a suffix of an original line (minimum 10 charact
 
 ### Blank Line Alignment
 
-LLMs often insert "cosmetic" blank lines in patches for readability.
+LLMs often insert "cosmetic" blank lines in patches for readability, or conversely, omit blank lines that are present in the source.
 
 - If a patch contains a blank context line that aligns with a blank line in the source, it matches normally.
 - If a blank context line does not align with a blank line in the source, the engine converts that hunk line into an addition (`+`) line. This preserves the LLM's intended spacing without causing alignment drift for subsequent context lines.
+- In Resilient and Fuzzy tiers, if the original file contains consecutive blank lines that are not present in the patch context before a non-blank line, the engine automatically skips these extra source blank lines and includes them in the resulting hunk to maintain correct alignment.
 
 ### EOF Overhang
 

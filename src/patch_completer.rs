@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 /// Maximum lines to search away from the expected position for lenient (Resilient/Fuzzy) matches.
 /// This prevents a hunk from "drifting" too far and causing subsequent hunks to fail.
-const MAX_PROXIMITY_FOR_LENIENT: usize = 100;
+const MAX_PROXIMITY_FOR_LENIENT: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MatchTier {
@@ -136,7 +136,8 @@ struct CandidateMatch {
 	overhang_hl_indices: Vec<usize>,
 	skipped_hl_indices: Vec<usize>,
 	converted_to_add_indices: Vec<usize>,
-	matched_orig_lines: Vec<(usize, String)>,
+	matched_orig_indices: Vec<(usize, usize)>,
+	skipped_blank_orig_indices: Vec<usize>,
 
 	/// Number of context/removal lines that matched without needing normalization or suffix.
 	exact_ws_count: usize,
@@ -238,11 +239,10 @@ fn search_candidates_for_tier(
 
 	for i in search_from..=orig_lines.len() {
 		// -- Proximity Check: If we've drifted too far in a lenient tier, skip this candidate.
-		let distance = match i >= search_from {
-			true => i - search_from,
-			false => search_from - i,
-		};
-		if tier > MatchTier::Strict && distance > MAX_PROXIMITY_FOR_LENIENT {
+		let distance = if i >= search_from { i - search_from } else { search_from - i };
+		let max_proximity = if search_from == 0 { 5000 } else { MAX_PROXIMITY_FOR_LENIENT };
+
+		if tier > MatchTier::Strict && distance > max_proximity {
 			continue;
 		}
 
@@ -251,6 +251,7 @@ fn search_candidates_for_tier(
 		let current_skipped = Vec::new();
 		let mut current_converted_to_add = Vec::new();
 		let mut current_matches = Vec::new();
+		let mut current_skipped_blanks_all = Vec::new();
 		let mut current_exact_ws_count: usize = 0;
 		let mut orig_off = 0; // offset in orig_lines from i
 
@@ -261,13 +262,23 @@ fn search_candidates_for_tier(
 
 			let p_line = if hl_line.len() > 1 { &hl_line[1..] } else { "" };
 
-			let target_idx = i + orig_off;
+			let mut target_idx = i + orig_off;
+
+			// -- Blank line skipping for Resilient/Fuzzy tiers
+			// This allows matching even when the original file has more blank lines than the LLM context.
+			if tier >= MatchTier::Resilient && !p_line.trim().is_empty() {
+				while target_idx < orig_lines.len() && orig_lines[target_idx].trim().is_empty() {
+					current_skipped_blanks_all.push(target_idx);
+					target_idx += 1;
+					orig_off += 1;
+				}
+			}
 
 			if p_line.trim().is_empty() {
 				// If the patch has a blank line...
 				if target_idx < orig_lines.len() && orig_lines[target_idx].trim().is_empty() {
 					// ... and original has a blank line: Match.
-					current_matches.push((hl_idx, orig_lines[target_idx].to_string()));
+					current_matches.push((hl_idx, target_idx));
 					orig_off += 1;
 				} else if target_idx >= orig_lines.len() {
 					// ... and we're at/beyond EOF: convert to addition to preserve spacing.
@@ -288,7 +299,7 @@ fn search_candidates_for_tier(
 					if orig_line == p_line {
 						current_exact_ws_count += 1;
 					}
-					current_matches.push((hl_idx, orig_line.to_string()));
+					current_matches.push((hl_idx, target_idx));
 					orig_off += 1;
 				} else {
 					matches = false;
@@ -333,7 +344,8 @@ fn search_candidates_for_tier(
 				overhang_hl_indices: current_overhang,
 				skipped_hl_indices: current_skipped,
 				converted_to_add_indices: current_converted_to_add,
-				matched_orig_lines: current_matches,
+				matched_orig_indices: current_matches,
+				skipped_blank_orig_indices: current_skipped_blanks_all,
 				exact_ws_count: current_exact_ws_count,
 			});
 		}
@@ -396,12 +408,14 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 	let overhang_hl_indices = best.overhang_hl_indices;
 	let skipped_hl_indices = best.skipped_hl_indices;
 	let converted_to_add_indices = best.converted_to_add_indices;
-	let matched_orig_lines = best.matched_orig_lines;
+	let matched_orig_indices = best.matched_orig_indices;
+	let skipped_blank_orig_indices = best.skipped_blank_orig_indices;
 
 	// -- Reconstruct final hunk lines and calculate counts
 	let mut final_hunk_lines = Vec::new();
 	let mut old_count = 0;
 	let mut new_count = 0;
+	let mut last_orig_idx: Option<usize> = None;
 
 	for (hl_idx, line) in hunk_lines.iter().enumerate() {
 		if overhang_hl_indices.contains(&hl_idx) || skipped_hl_indices.contains(&hl_idx) {
@@ -417,7 +431,17 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 
 		// If this was a matched context/removal line, use the original file content for the hunk.
 		// This ensures that the generated patch matches the file exactly (needed for diffy).
-		if let Some((_, orig_content)) = matched_orig_lines.iter().find(|(h_idx, _)| *h_idx == hl_idx) {
+		if let Some((_, orig_idx)) = matched_orig_indices.iter().find(|(h_idx, _)| *h_idx == hl_idx) {
+			// Emit skipped blanks before this match to maintain alignment
+			for &s_idx in &skipped_blank_orig_indices {
+				if s_idx < *orig_idx && (last_orig_idx.is_none() || s_idx > last_orig_idx.unwrap()) {
+					final_hunk_lines.push(format!(" {}", orig_lines[s_idx]));
+					old_count += 1;
+					new_count += 1;
+				}
+			}
+
+			let orig_content = orig_lines[*orig_idx];
 			let prefix = if line.starts_with('-') { '-' } else { ' ' };
 			final_hunk_lines.push(format!("{prefix}{orig_content}"));
 
@@ -427,6 +451,7 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 				old_count += 1;
 				new_count += 1;
 			}
+			last_orig_idx = Some(*orig_idx);
 		}
 		// If it's an addition line, use it as is
 		else if line.starts_with('+') {
@@ -745,6 +770,27 @@ fn do_work() {
 		// Should match at line 1 via resilient tier (normalized whitespace).
 		assert!(completed.contains("@@ -1,4 +1,4 @@"));
 		assert!(completed.contains("+    let x = 42;"));
+
+		Ok(())
+	}
+
+	/// Verifies that multiple blank lines in the original file can be skipped
+	/// if the patch context only has one (or none), provided we're in Resilient tier.
+	#[test]
+	fn test_patch_completer_complete_skips_extra_blanks_original() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "line 1\n\n\nline 2\n";
+		// Patch context misses the two extra blank lines.
+		let patch = "@@\n line 1\n-line 2\n+line 2 modified\n";
+
+		// -- Exec
+		let (completed, _) = complete(original, patch)?;
+
+		// -- Check
+		// old_count should be 4 (line 1, blank, blank, line 2)
+		assert!(completed.contains("@@ -1,4 +1,4 @@"));
+		// The extra blanks should be in the patch as context
+		assert!(completed.contains(" line 1\n \n \n-line 2\n+line 2 modified"));
 
 		Ok(())
 	}

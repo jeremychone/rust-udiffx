@@ -135,7 +135,7 @@ fn test_patches_test_10() -> Result<()> {
 	let content = run_test_scenario("test-10", false)?;
 
 	// -- Check
-	println!("->> Result for test-10:\n{content}");
+	assert_contains!(content, "local function sort_files_by_mtime");
 
 	Ok(())
 }
