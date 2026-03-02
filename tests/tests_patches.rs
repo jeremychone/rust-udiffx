@@ -129,6 +129,17 @@ fn test_patches_test_09() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_10() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-10", false)?;
+
+	// -- Check
+	println!("->> Result for test-10:\n{content}");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {

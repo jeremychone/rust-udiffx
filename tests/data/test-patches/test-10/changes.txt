@@ -1,0 +1,38 @@
+<FILE_CHANGES>
+<FILE_PATCH file_path="pro/coder/lua/auto_context.lua">
+@@
+ 		aip.run.pin("helpers", 4, helpers_pin)
+ 		aip.task.pin("helpers", 4, helpers_pin)
+ 	end
+ end
+
++-- Helper to sort file paths by their modification time (mtime)
++-- Logic: Oldest first, alphabetical if same mtime
++local function sort_files_by_mtime(file_paths)
++	if not file_paths or #file_paths <= 1 then
++		return file_paths
++	end
++	local files = aip.file.list(file_paths)
++	table.sort(files, function(a, b)
++		local am = a.mtime or 0
++		local bm = b.mtime or 0
++		if am == bm then
++			return a.path < b.path
++		end
++		return am < bm
++	end)
++	local sorted = {}
++	for _, f in ipairs(files) do
++		table.insert(sorted, f.path)
++	end
++	return sorted
++end
++
+ return {
+ 	extract_auto_context_config = extract_auto_context_config,
+ 	pin_status                  = pin_status,
++	sort_files_by_mtime         = sort_files_by_mtime,
+ }
+</FILE_PATCH>
+
+</FILE_CHANGES>
