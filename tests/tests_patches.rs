@@ -171,6 +171,17 @@ fn test_patches_test_12() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_13() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-13-append-trailing-blank-context", false)?;
+
+	// -- Check
+	assert_eq!(content, "line 3\nline 4\n");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {

@@ -81,7 +81,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 			// Strip trailing empty lines that lack a valid diff prefix.
 			// These are artefacts of the raw patch text (e.g. a trailing newline)
 			// and would otherwise be mis-counted as context lines.
-			while hunk_lines.last().is_some_and(|l| l.is_empty()) {
+			while hunk_lines.last().is_some_and(|l| l.trim().is_empty()) {
 				hunk_lines.pop();
 			}
 
