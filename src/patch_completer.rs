@@ -78,6 +78,13 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 				hunk_lines.push(lines.next().unwrap());
 			}
 
+			// Strip trailing empty lines that lack a valid diff prefix.
+			// These are artefacts of the raw patch text (e.g. a trailing newline)
+			// and would otherwise be mis-counted as context lines.
+			while hunk_lines.last().is_some_and(|l| l.is_empty()) {
+				hunk_lines.pop();
+			}
+
 			// Compute line numbers
 			let hunk_bounds = compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
 			let old_start = hunk_bounds.old_start;
@@ -239,8 +246,16 @@ fn search_candidates_for_tier(
 
 	for i in search_from..=orig_lines.len() {
 		// -- Proximity Check: If we've drifted too far in a lenient tier, skip this candidate.
-		let distance = if i >= search_from { i - search_from } else { search_from - i };
-		let max_proximity = if search_from == 0 { 5000 } else { MAX_PROXIMITY_FOR_LENIENT };
+		let distance = if i >= search_from {
+			i - search_from
+		} else {
+			search_from - i
+		};
+		let max_proximity = if search_from == 0 {
+			5000
+		} else {
+			MAX_PROXIMITY_FOR_LENIENT
+		};
 
 		if tier > MatchTier::Strict && distance > max_proximity {
 			continue;
@@ -360,12 +375,49 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 
 	// -- If no context/removal lines, assume append to end
 	if context_lines_count == 0 {
-		let added_count = hunk_lines.len();
-		let final_hunk_lines = hunk_lines.iter().map(|s| s.to_string()).collect();
+		// Count trailing blank lines in the original
+		let trailing_blank_count = orig_lines.iter().rev().take_while(|l| l.trim().is_empty()).count();
+
+		// Count leading blank addition lines in the hunk
+		let leading_blank_add_count = hunk_lines
+			.iter()
+			.take_while(|l| {
+				let content = if l.len() > 1 { &l[1..] } else { "" };
+				l.starts_with('+') && content.trim().is_empty()
+			})
+			.count();
+
+		// Overlap: convert leading blank additions into context lines that anchor
+		// against the existing trailing blanks, preventing duplication.
+		let overlap = trailing_blank_count.min(leading_blank_add_count);
+
+		let mut final_hunk_lines = Vec::new();
+		let mut old_count = 0;
+		let mut new_count = 0;
+
+		for (i, hl) in hunk_lines.iter().enumerate() {
+			if i < overlap {
+				// Convert this leading blank addition to a context line
+				final_hunk_lines.push(" ".to_string());
+				old_count += 1;
+				new_count += 1;
+			} else {
+				final_hunk_lines.push(hl.to_string());
+				new_count += 1;
+			}
+		}
+
+		let old_start = if overlap > 0 {
+			// Anchor at the first trailing blank line we're using as context
+			orig_lines.len() - trailing_blank_count + 1
+		} else {
+			orig_lines.len() + 1
+		};
+
 		return Ok(HunkBounds {
-			old_start: orig_lines.len() + 1,
-			old_count: 0,
-			new_count: added_count,
+			old_start,
+			old_count,
+			new_count,
 			final_hunk_lines,
 			tier: None,
 		});
