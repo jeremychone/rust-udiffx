@@ -246,11 +246,7 @@ fn search_candidates_for_tier(
 
 	for i in search_from..=orig_lines.len() {
 		// -- Proximity Check: If we've drifted too far in a lenient tier, skip this candidate.
-		let distance = if i >= search_from {
-			i - search_from
-		} else {
-			search_from - i
-		};
+		let distance = i.abs_diff(search_from);
 		let max_proximity = if search_from == 0 {
 			5000
 		} else {
@@ -391,13 +387,34 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 		// against the existing trailing blanks, preventing duplication.
 		let overlap = trailing_blank_count.min(leading_blank_add_count);
 
+		// Count trailing blank addition lines in the hunk
+		let trailing_blank_add_count = hunk_lines
+			.iter()
+			.rev()
+			.take_while(|l| {
+				let content = if l.len() > 1 { &l[1..] } else { "" };
+				l.starts_with('+') && content.trim().is_empty()
+			})
+			.count();
+
+		// Trailing overlap: remaining original trailing blanks not consumed by leading overlap
+		// can absorb trailing blank additions to prevent duplication.
+		let remaining_trailing_blanks = trailing_blank_count.saturating_sub(overlap);
+		let trailing_overlap = remaining_trailing_blanks.min(trailing_blank_add_count);
+
 		let mut final_hunk_lines = Vec::new();
 		let mut old_count = 0;
 		let mut new_count = 0;
+		let hunk_len = hunk_lines.len();
 
 		for (i, hl) in hunk_lines.iter().enumerate() {
 			if i < overlap {
 				// Convert this leading blank addition to a context line
+				final_hunk_lines.push(" ".to_string());
+				old_count += 1;
+				new_count += 1;
+			} else if trailing_overlap > 0 && i >= hunk_len - trailing_overlap {
+				// Convert trailing blank addition to a context line
 				final_hunk_lines.push(" ".to_string());
 				old_count += 1;
 				new_count += 1;
@@ -409,7 +426,10 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 
 		let old_start = if overlap > 0 {
 			// Anchor at the first trailing blank line we're using as context
-			orig_lines.len() - trailing_blank_count + 1
+			orig_lines.len() - (overlap + trailing_overlap).max(trailing_blank_count).min(trailing_blank_count) + 1
+		} else if trailing_overlap > 0 {
+			// Anchor at the trailing blank lines used as context
+			orig_lines.len() - trailing_overlap + 1
 		} else {
 			orig_lines.len() + 1
 		};
