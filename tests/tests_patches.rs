@@ -159,6 +159,18 @@ fn test_patches_test_11() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_12() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-12-append-with-white-end-surround", false)?;
+
+	// -- Check
+	assert_contains!(content, "line 3");
+	assert_contains!(content, "line 4");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
