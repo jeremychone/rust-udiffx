@@ -51,6 +51,12 @@ Within the Resilient and Fuzzy tiers, candidates that have more "exact" matches 
 
 The strategy includes specific handlers for common LLM formatting artifacts.
 
+### Hunk Cleanup (Artifact Removal)
+
+To ensure high reliability, the engine performs a cleanup step on each hunk before matching:
+
+- **Trailing Whitespace-Only Lines**: Any lines at the end of a hunk that consist solely of whitespace (including a single space `" "` which can be mistaken for a blank context line) are stripped. These are typically artifacts of the XML/tag extraction process and do not represent intentional patch content. This cleanup allows hunks containing only additions followed by cosmetic whitespace to be correctly identified as append-only operations.
+
 ### Suffix Matching
 
 If a context line in a patch is a suffix of an original line (minimum 10 characters), it is considered a match. This allows the LLM to provide only the trailing part of a long line as context.
