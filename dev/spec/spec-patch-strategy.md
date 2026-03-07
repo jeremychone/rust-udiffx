@@ -67,6 +67,19 @@ LLMs often insert "cosmetic" blank lines in patches for readability, or converse
 
 If the context lines in a hunk extend beyond the end of the file, they are treated as "overhang" and dropped, provided they are context lines (` `) and not removal lines (`-`). This allows patches to include trailing context that the LLM incorrectly assumed existed at the end of a file.
 
+### Append-Only Hunks and Blank-Line Overlap
+
+A hunk with no context/removal lines (only `+` lines) is treated as an append operation at the end of the file.
+
+To avoid accidental duplication of trailing blank lines during append:
+
+- The engine counts trailing blank lines already present in the original file.
+- If the append hunk starts with blank addition lines, it converts as many of those leading blank additions as possible into context lines that anchor to existing trailing blanks.
+- If the append hunk ends with blank addition lines, it can also convert some trailing blank additions into context lines using any remaining trailing blanks not already consumed by the leading overlap.
+- Blank additions that cannot be overlapped remain true additions.
+
+This behavior preserves intended spacing while preventing repeated blank-line growth at EOF when LLM output includes cosmetic empty lines around appended content.
+
 ## Performance Considerations
 
 - **Early Exit**: The tiered approach ensures that well-formed, strict patches are processed quickly without ever triggering the more expensive normalization or lowercasing logic of the Resilient and Fuzzy tiers.
