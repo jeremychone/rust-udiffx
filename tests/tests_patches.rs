@@ -140,6 +140,25 @@ fn test_patches_test_10() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_11() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-11-append-with-empty-surround", false)?;
+
+	// -- Check
+	assert_contains!(content, "line 3");
+	assert!(
+		!content.contains("\n\n\n\nline 3"),
+		"unexpected extra blank lines were introduced before appended line"
+	);
+	assert!(
+		!content.contains("line 3\n\n\n\n"),
+		"unexpected extra blank lines were introduced after appended line"
+	);
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
@@ -149,7 +168,14 @@ fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
 	let change_path = folder_path.join("changes.txt");
 	let changes_str = std::fs::read_to_string(change_path)?;
 
-	let (changes, _) = extract_file_changes(&changes_str, false)?;
+	let normalized_changes_str = changes_str
+		.replace("TEST_FILE_CHANGES", "FILE_CHANGES")
+		.replace("TEST_FILE_PATCH", "FILE_PATCH")
+		.replace("TEST_FILE_NEW", "FILE_NEW")
+		.replace("TEST_FILE_RENAME", "FILE_RENAME")
+		.replace("TEST_FILE_DELETE", "FILE_DELETE");
+
+	let (changes, _) = extract_file_changes(&normalized_changes_str, false)?;
 	let mut content = original;
 
 	for change in changes {
