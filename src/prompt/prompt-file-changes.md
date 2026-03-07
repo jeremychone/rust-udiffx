@@ -2,8 +2,8 @@
 
 When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container using the directives format below. Do not place any other content inside `<FILE_CHANGES>`. Like
 
-<FILE_CHANGES>
-_FILE_DIRECTIVES_
+<FILE*CHANGES>
+\_FILE_DIRECTIVES*
 </FILE_CHANGES>
 
 You may include explanation before or after the `<FILE_CHANGES>` block. If no changes are required, output nothing.
@@ -12,13 +12,13 @@ IMPORTANT. There can be only one FILE_CHANGES tag per response. So make sure you
 
 ### Directives
 
-| Directive     | Purpose                                  |
-| ------------- | ---------------------------------------- |
-| `FILE_NEW`    | Create a new file                        |
-| `FILE_PATCH`  | Modify an existing file via unified diff |
-| `FILE_APPEND` | Append content to the end of a file      |
-| `FILE_RENAME` | Rename or move a file                    |
-| `FILE_DELETE` | Delete a file                            |
+| Directive     | Purpose                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| `FILE_NEW`    | Create a new file                                                |
+| `FILE_APPEND` | Append content to the end of a file (use this to append to file) |
+| `FILE_PATCH`  | Modify an existing file via unified diff                         |
+| `FILE_RENAME` | Rename or move a file                                            |
+| `FILE_DELETE` | Delete a file                                                    |
 
 ### General Rules
 
@@ -32,16 +32,27 @@ IMPORTANT. There can be only one FILE_CHANGES tag per response. So make sure you
 
 Creates a new file. The content inside the code fence is the full file content.
 
-<FILE_NEW file_path="path/to/file.ext">
-_full_file_contents_
+<FILE*NEW file_path="path/to/file.ext">
+\_full_file_contents*
 </FILE_NEW>
+
+### FILE_APPEND
+
+Appends content to the end of a file. If the file does not exist, it is created.
+
+- If your intent is append-only, use `FILE_APPEND` instead of `FILE_PATCH`.
+- Use `FILE_PATCH` only when modifying, removing, or replacing existing content in-place.
+
+<FILE*APPEND file_path="path/to/file.ext">
+\_content_to_append*
+</FILE_APPEND>
 
 ### FILE_PATCH
 
 Modifies an existing file using a simplified, numberless unified diff format.
 
-<FILE_PATCH file_path="path/to/file.ext">
-_patch_format_
+<FILE*PATCH file_path="path/to/file.ext">
+\_patch_format*
 </FILE_PATCH>
 
 #### Hunk header
@@ -55,11 +66,11 @@ _patch_format_
 
 Every line in a hunk body **must** start with one of exactly three prefix characters:
 
-| Prefix | Meaning                   | Description                                                            |
-| ------ | ------------------------- | ---------------------------------------------------------------------- |
-| ` `    | Context (space character) | Unchanged surrounding line; must match the original file exactly       |
-| `-`    | Removal                   | Line to remove; must match the original file exactly                   |
-| `+`    | Addition                  | Line to add                                                            |
+| Prefix | Meaning                   | Description                                                      |
+| ------ | ------------------------- | ---------------------------------------------------------------- |
+| ` `    | Context (space character) | Unchanged surrounding line; must match the original file exactly |
+| `-`    | Removal                   | Line to remove; must match the original file exactly             |
+| `+`    | Addition                  | Line to add                                                      |
 
 **Critical rules for hunk body lines:**
 
@@ -73,22 +84,11 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 
 <FILE_PATCH file_path="path/to/existing_file.ext">
 @@
- (context line - exact copy of original, prefixed with a space)
+(context line - exact copy of original, prefixed with a space)
 -(removal line - exact copy of original, prefixed with -)
 +(addition line - new content, prefixed with +)
- (context line - if needed)
+(context line - if needed)
 </FILE_PATCH>
-
-### FILE_APPEND
-
-Appends content to the end of a file. If the file does not exist, it is created.
-
-- If your intent is append-only, use `FILE_APPEND` instead of `FILE_PATCH`.
-- Use `FILE_PATCH` only when modifying, removing, or replacing existing content in-place.
-
-<FILE_APPEND file_path="path/to/file.ext">
-_content_to_append_
-</FILE_APPEND>
 
 ### FILE_RENAME
 
@@ -100,7 +100,7 @@ _content_to_append_
 
 ### Complete Example
 
-Always with `FILE_CHANGES` tag surrounding the file directives 
+Always with `FILE_CHANGES` tag surrounding the file directives
 
 #### Example
 
@@ -108,7 +108,7 @@ Always with `FILE_CHANGES` tag surrounding the file directives
 
 <FILE_NEW file_path="src/hello.rs">
 pub fn hello() {
-    println!("Hello from hello.rs");
+println!("Hello from hello.rs");
 }
 
 </FILE_NEW>
@@ -116,12 +116,14 @@ pub fn hello() {
 <FILE_PATCH file_path="src/main.rs">
 @@
 +mod hello;
-+
- fn main() {
--    println!("Old Message");
-+    hello::hello();
- }
-</FILE_PATCH>
+
+- fn main() {
+
+* println!("Old Message");
+
+- hello::hello();
+  }
+  </FILE_PATCH>
 
 <FILE_RENAME from_path="docs/OLD_README.md" to_path="README.md" />
 
