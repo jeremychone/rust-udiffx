@@ -150,6 +150,100 @@ bind K send-keys -t 2 "clear" Enter "\\" Enter C-l \; send-keys -t 3 "clear" Ent
 }
 
 #[test]
+fn test_changes_append_existing_file() -> Result<()> {
+	// -- Setup & Fixtures
+	let base_dir = test_support::new_out_dir_path("test_changes_append_existing_file")?;
+	let file_path = base_dir.join("notes.md");
+	std::fs::write(&file_path, "alpha\n")?;
+
+	let input = r#"
+<FILE_CHANGES>
+<FILE_APPEND file_path="notes.md">
+beta
+</FILE_APPEND>
+</FILE_CHANGES>
+"#;
+
+	// -- Exec
+	let (changes, _extruded) = extract_file_changes(input, false)?;
+	let status = apply_file_changes(&base_dir, changes)?;
+
+	// -- Check
+	assert_eq!(status.items.len(), 1, "Should have 1 directive status");
+	assert!(
+		status.items[0].success,
+		"Directive should have succeeded. Error: {:?}",
+		status.items[0].error_msg
+	);
+	let final_content = std::fs::read_to_string(file_path)?;
+	assert_eq!(final_content, "alpha\nbeta\n");
+
+	Ok(())
+}
+
+#[test]
+fn test_changes_append_creates_missing_file() -> Result<()> {
+	// -- Setup & Fixtures
+	let base_dir = test_support::new_out_dir_path("test_changes_append_creates_missing_file")?;
+
+	let input = r#"
+<FILE_CHANGES>
+<FILE_APPEND file_path="logs/output.txt">
+line-1
+</FILE_APPEND>
+</FILE_CHANGES>
+"#;
+
+	// -- Exec
+	let (changes, _extruded) = extract_file_changes(input, false)?;
+	let status = apply_file_changes(&base_dir, changes)?;
+
+	// -- Check
+	assert_eq!(status.items.len(), 1, "Should have 1 directive status");
+	assert!(
+		status.items[0].success,
+		"Directive should have succeeded. Error: {:?}",
+		status.items[0].error_msg
+	);
+	let final_content = std::fs::read_to_string(base_dir.join("logs/output.txt"))?;
+	assert_eq!(final_content, "line-1\n");
+
+	Ok(())
+}
+
+#[test]
+fn test_changes_append_empty_is_no_change() -> Result<()> {
+	// -- Setup & Fixtures
+	let base_dir = test_support::new_out_dir_path("test_changes_append_empty_is_no_change")?;
+	let file_path = base_dir.join("empty.txt");
+	std::fs::write(&file_path, "seed")?;
+
+	let input = r#"
+<FILE_CHANGES>
+<FILE_APPEND file_path="empty.txt"></FILE_APPEND>
+</FILE_CHANGES>
+"#;
+
+	// -- Exec
+	let (changes, _extruded) = extract_file_changes(input, false)?;
+	let status = apply_file_changes(&base_dir, changes)?;
+
+	// -- Check
+	assert_eq!(status.items.len(), 1, "Should have 1 directive status");
+	assert!(
+		!status.items[0].success,
+		"Directive should have failed with no changes"
+	);
+	let err = status.items[0].error_msg.as_ref().ok_or("should have error message")?;
+	assert!(
+		err.contains("No changes applied"),
+		"Expected no changes error, got: {err}"
+	);
+
+	Ok(())
+}
+
+#[test]
 fn test_changes_simple() -> Result<()> {
 	// -- Setup & Fixtures
 	let base_dir = test_support::new_out_dir_path("test_changes_simple")?;

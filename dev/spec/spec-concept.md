@@ -53,7 +53,21 @@ Format:
 </FILE_PATCH>
 ```
 
-### 3. Rename File (`FILE_RENAME`)
+### 3. Append File (`FILE_APPEND`)
+
+Used to append content to the end of a file. If the file does not exist, it is created.
+
+- Attributes: `file_path="..."`
+- Content: The content to append.
+
+Format:
+```xml
+<FILE_APPEND file_path="path/to/file.ext">
+CONTENT_TO_APPEND
+</FILE_APPEND>
+```
+
+### 4. Rename File (`FILE_RENAME`)
 
 Used to move or rename files and directories.
 
@@ -64,7 +78,7 @@ Format:
 <FILE_RENAME from_path="src/old.rs" to_path="src/new.rs" />
 ```
 
-### 4. Delete File (`FILE_DELETE`)
+### 5. Delete File (`FILE_DELETE`)
 
 Used to permanently remove a file or directory.
 
@@ -104,6 +118,12 @@ Below is an example of a single response containing multiple operations, using b
 <FILE_RENAME from_path="src/legacy_mod.rs" to_path="src/core_mod.rs" />
 
 <FILE_DELETE file_path="temp_config.json" />
+
+<FILE_APPEND file_path="CHANGELOG.md">
+```md
+- Added helper version accessor and startup message update.
+```
+</FILE_APPEND>
 
 <FILE_NEW file_path="src/helpers.rs">
 ```rust

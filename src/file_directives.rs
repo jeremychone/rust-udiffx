@@ -8,6 +8,10 @@ pub enum FileDirective {
 		file_path: String,
 		content: Content,
 	},
+	Append {
+		file_path: String,
+		content: Content,
+	},
 	Rename {
 		from_path: String,
 		to_path: String,

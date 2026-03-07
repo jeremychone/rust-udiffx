@@ -21,6 +21,9 @@ pub enum DirectiveKind {
 	Patch {
 		file_path: String,
 	},
+	Append {
+		file_path: String,
+	},
 	Rename {
 		from_path: String,
 		file_path: String,
@@ -40,6 +43,7 @@ impl DirectiveStatus {
 		match &self.kind {
 			DirectiveKind::New { file_path } => file_path,
 			DirectiveKind::Patch { file_path } => file_path,
+			DirectiveKind::Append { file_path } => file_path,
 			DirectiveKind::Rename { file_path, .. } => file_path,
 			DirectiveKind::Delete { file_path } => file_path,
 			DirectiveKind::Fail { file_path, .. } => file_path.as_deref().unwrap_or("unknown"),
@@ -58,6 +62,7 @@ impl DirectiveStatus {
 		match &self.kind {
 			DirectiveKind::New { .. } => "New",
 			DirectiveKind::Patch { .. } => "Patch",
+			DirectiveKind::Append { .. } => "Append",
 			DirectiveKind::Rename { .. } => "Rename",
 			DirectiveKind::Delete { .. } => "Delete",
 			DirectiveKind::Fail { .. } => "Fail",
@@ -76,6 +81,9 @@ impl From<&FileDirective> for DirectiveStatus {
 				file_path: file_path.clone(),
 			},
 			FileDirective::Patch { file_path, .. } => DirectiveKind::Patch {
+				file_path: file_path.clone(),
+			},
+			FileDirective::Append { file_path, .. } => DirectiveKind::Append {
 				file_path: file_path.clone(),
 			},
 			FileDirective::Rename { from_path, to_path } => DirectiveKind::Rename {

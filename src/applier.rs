@@ -78,6 +78,27 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						.map_err(|err| Error::io_write_file(full_path.to_string(), err))?;
 				}
 
+				FileDirective::Append { file_path, content } => {
+					let full_path = base_dir.join(&file_path);
+					fs_guard::check_for_write(&full_path, &base_dir)?;
+
+					if content.content.is_empty() {
+						return Err(Error::apply_no_changes(file_path));
+					}
+
+					ensure_file_dir(&full_path).map_err(Error::simple_fs)?;
+
+					let new_content = if full_path.exists() {
+						let existing_content = read_to_string(&full_path).map_err(Error::simple_fs)?;
+						format!("{existing_content}{}", content.content)
+					} else {
+						content.content
+					};
+
+					fs::write(&full_path, new_content)
+						.map_err(|err| Error::io_write_file(full_path.to_string(), err))?;
+				}
+
 				FileDirective::Rename { from_path, to_path } => {
 					let full_from = base_dir.join(&from_path);
 					let full_to = base_dir.join(&to_path);

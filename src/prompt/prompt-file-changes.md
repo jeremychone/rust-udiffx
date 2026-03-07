@@ -16,6 +16,7 @@ IMPORTANT. There can be only one FILE_CHANGES tag per response. So make sure you
 | ------------- | ---------------------------------------- |
 | `FILE_NEW`    | Create a new file                        |
 | `FILE_PATCH`  | Modify an existing file via unified diff |
+| `FILE_APPEND` | Append content to the end of a file      |
 | `FILE_RENAME` | Rename or move a file                    |
 | `FILE_DELETE` | Delete a file                            |
 
@@ -77,6 +78,17 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 +(addition line - new content, prefixed with +)
  (context line - if needed)
 </FILE_PATCH>
+
+### FILE_APPEND
+
+Appends content to the end of a file. If the file does not exist, it is created.
+
+- If your intent is append-only, use `FILE_APPEND` instead of `FILE_PATCH`.
+- Use `FILE_PATCH` only when modifying, removing, or replacing existing content in-place.
+
+<FILE_APPEND file_path="path/to/file.ext">
+_content_to_append_
+</FILE_APPEND>
 
 ### FILE_RENAME
 
