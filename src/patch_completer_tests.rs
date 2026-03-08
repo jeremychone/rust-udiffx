@@ -18,6 +18,142 @@ fn test_patch_completer_complete_simple() -> Result<()> {
 	Ok(())
 }
 
+// -- Comment-Only Line Tolerance Tests
+
+/// Verifies that `// some comment` matches `//  some  comment` at Resilient tier
+/// via comment-only line tolerance (normalized whitespace after stripping marker).
+#[test]
+fn test_patch_completer_complete_resilient_comment_double_slash_ws() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "// some comment\nlet x = 1;\n";
+	let patch = "@@\n //  some  comment\n-let x = 1;\n+let x = 2;\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+let x = 2;"));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert!(
+		tier <= MatchTier::Resilient,
+		"Expected Resilient or better tier for comment-only whitespace tolerance, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that `# a comment` matches `#  a  comment` at Resilient tier
+/// via comment-only line tolerance (hash comment marker).
+#[test]
+fn test_patch_completer_complete_resilient_comment_hash_ws() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "# a comment\nvalue = 10\n";
+	let patch = "@@\n #  a  comment\n-value = 10\n+value = 20\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+value = 20"));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert!(
+		tier <= MatchTier::Resilient,
+		"Expected Resilient or better tier for hash comment tolerance, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that `<!-- a comment -->` matches `<!-- a  comment -->` at Resilient tier
+/// via comment-only line tolerance (HTML comment marker).
+#[test]
+fn test_patch_completer_complete_resilient_comment_html_ws() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "<!-- a comment -->\n<div>hello</div>\n";
+	let patch = "@@\n <!--  a  comment  -->\n-<div>hello</div>\n+<div>world</div>\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+<div>world</div>"));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert!(
+		tier <= MatchTier::Resilient,
+		"Expected Resilient or better tier for HTML comment tolerance, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that a comment line does NOT match a non-comment line,
+/// even if the textual content after stripping would be similar.
+#[test]
+fn test_patch_completer_complete_resilient_comment_vs_non_comment_no_match() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "// do something\nlet x = 1;\n";
+	// Patch context is NOT a comment, so comment tolerance should not apply
+	let patch = "@@\n do something\n-let x = 1;\n+let x = 2;\n";
+
+	// -- Exec
+	let result = complete(original, patch);
+
+	// -- Check
+	assert!(
+		result.is_err(),
+		"Should fail when one line is a comment and the other is not"
+	);
+
+	Ok(())
+}
+
+/// Verifies that a non-comment code line does NOT match when the patch
+/// provides a commented-out version of it.
+#[test]
+fn test_patch_completer_complete_resilient_code_vs_commented_code_no_match() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "let x = 1;\nlet y = 2;\n";
+	// Patch context is a comment version of the code
+	let patch = "@@\n // let x = 1;\n-let y = 2;\n+let y = 42;\n";
+
+	// -- Exec
+	let result = complete(original, patch);
+
+	// -- Check
+	assert!(
+		result.is_err(),
+		"Should fail when patch has commented-out code and original has actual code"
+	);
+
+	Ok(())
+}
+
+/// Verifies that `##` (Markdown heading) is NOT treated as a `#` comment.
+/// The Markdown heading normalization should handle `##` lines, not the comment tolerance.
+#[test]
+fn test_patch_completer_complete_resilient_comment_hash_not_markdown_heading() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "## Section Title\nSome content.\n";
+	// Patch uses `## Section Title` which should match via Markdown heading normalization,
+	// NOT via comment tolerance (since `##` is excluded from comment marker detection).
+	let patch = "@@\n ## Section Title\n-Some content.\n+New content.\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+New content."));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	// Should match at Strict since the lines are identical
+	assert_eq!(tier, MatchTier::Strict, "Expected Strict tier for identical Markdown heading");
+
+	Ok(())
+}
+
 /// Verifies that lines with reformatted internal whitespace in string-like content
 /// match at the Fuzzy tier via the strip-all-whitespace last resort.
 #[test]
@@ -818,6 +954,134 @@ fn test_patch_completer_complete_blank_only_orig_with_context() -> Result<()> {
 	assert!(completed.contains("+fn setup() {"));
 	assert!(completed.contains("+    init();"));
 	assert!(completed.contains("+}"));
+
+	Ok(())
+}
+
+// -- Adjacent Hint Disambiguation Tests
+
+/// Verifies that when two identical code blocks exist, surrounding context from
+/// adjacent hunks disambiguates the correct one (second block here).
+#[test]
+fn test_patch_completer_complete_adjacent_hint_disambiguates_second() -> Result<()> {
+	// -- Setup & Fixtures
+	// Two identical blocks. The first is preceded by "header_a" and followed by "footer_a".
+	// The second is preceded by "header_b" and followed by "footer_b".
+	let original = "\
+header_a
+fn do_thing() {
+    old_impl();
+}
+footer_a
+header_b
+fn do_thing() {
+    old_impl();
+}
+footer_b
+";
+	// Two hunks: first hunk modifies something in "header_b" line area,
+	// second hunk targets the second "fn do_thing()" block.
+	// The second hunk's context should match the second block because
+	// the first hunk's last context line is "header_b" which appears
+	// just before the second block.
+	let patch = "\
+@@
+ footer_a
+-header_b
++header_b_modified
+ fn do_thing() {
+@@
+ fn do_thing() {
+-    old_impl();
++    new_impl();
+ }
+";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	// The second hunk should match the second block (line 7), not the first (line 2).
+	// The first hunk anchors at line 5 (footer_a), so second hunk search_from is >= 7.
+	// With adjacent hints, the "fn do_thing()" in the second hunk should match line 7.
+	assert!(completed.contains("+    new_impl();"));
+	// Verify the second hunk's header references the second block
+	// The second @@ should be at line 7 or later
+	let second_hunk_pos = completed.rfind("@@ -").ok_or("Should have a second hunk header")?;
+	let second_header = &completed[second_hunk_pos..];
+	assert!(
+		second_header.starts_with("@@ -7,") || second_header.starts_with("@@ -8,"),
+		"Second hunk should target line 7 or 8 (second block). Got: {second_header}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that when two identical code blocks exist and there is no distinguishing
+/// surrounding context, proximity (first match) is still preferred.
+#[test]
+fn test_patch_completer_complete_adjacent_hint_falls_back_to_proximity() -> Result<()> {
+	// -- Setup & Fixtures
+	// Two identical blocks with no distinguishing surrounding context.
+	let original = "\
+fn do_thing() {
+    old_impl();
+}
+fn do_thing() {
+    old_impl();
+}
+";
+	// Single hunk, no adjacent hunks to provide hints.
+	let patch = "@@\n fn do_thing() {\n-    old_impl();\n+    new_impl();\n }\n";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	// With no hints and identical blocks, proximity wins: first block (line 1).
+	assert!(completed.contains("@@ -1,3 +1,3 @@"));
+	assert!(completed.contains("+    new_impl();"));
+
+	Ok(())
+}
+
+/// Verifies that the next-hunk hint helps disambiguate when matching the first of
+/// two identical blocks, because the next hunk's first context line follows the first block.
+#[test]
+fn test_patch_completer_complete_adjacent_hint_next_hunk_disambiguates_first() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "\
+fn process() {
+    step_one();
+}
+between_marker
+fn process() {
+    step_one();
+}
+end_marker
+";
+	// Two hunks: first targets "fn process()", second targets "between_marker".
+	// The next-hunk hint ("between_marker") should help the first hunk prefer
+	// the first block (whose following line is "between_marker").
+	let patch = "\
+@@
+ fn process() {
+-    step_one();
++    step_two();
+ }
+@@
+-between_marker
++between_marker_modified
+ fn process() {
+";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	// First hunk should match the first block (line 1).
+	assert!(completed.contains("@@ -1,3 +1,3 @@"));
+	assert!(completed.contains("+    step_two();"));
 
 	Ok(())
 }

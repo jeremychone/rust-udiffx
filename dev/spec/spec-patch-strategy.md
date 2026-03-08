@@ -48,6 +48,15 @@ Note: For Resilient and Fuzzy tiers, a proximity limit is enforced to prevent ex
 
 Within the Resilient and Fuzzy tiers, candidates that have more "exact" matches (where the line matched without needing normalization) are scored higher. This ensures that even in lenient tiers, the most visually similar block is preferred.
 
+### Adjacent Hunk Context Disambiguation
+
+When a patch contains multiple hunks, adjacent hunk context is used to disambiguate identical code blocks. For each candidate match:
+
+- **Previous hint**: The last context/removal line of the previous hunk is compared (using Resilient-tier matching) against the original line immediately before the candidate's start position. A match indicates the candidate is positioned correctly relative to the prior hunk's changes.
+- **Next hint**: The first context/removal line of the next hunk is compared against the original line immediately after the candidate's matched region. A match indicates the candidate is followed by content that the next hunk expects.
+
+Each matching hint adds a substantial scoring bonus (weighted higher than uniform indent and proximity), so candidates with surrounding context confirmation are strongly preferred over those without.
+
 ## Structural Resilience
 
 The strategy includes specific handlers for common LLM formatting artifacts.
@@ -86,6 +95,10 @@ To avoid accidental duplication of trailing blank lines during append:
 - Blank additions that cannot be overlapped remain true additions.
 
 This behavior preserves intended spacing while preventing repeated blank-line growth at EOF when LLM output includes cosmetic empty lines around appended content.
+
+### Adjacent Hunk Context
+
+When multiple hunks are present in a patch, the engine collects all hunk bodies in a first pass, then processes each hunk with knowledge of the adjacent hunks' context lines. This allows the scoring system to disambiguate identical code blocks by verifying that the surrounding file content matches what neighboring hunks expect. See the "Adjacent Hunk Context Disambiguation" section under Match Resolution and Scoring for details.
 
 ## Performance Considerations
 

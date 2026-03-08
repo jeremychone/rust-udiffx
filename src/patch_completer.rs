@@ -22,6 +22,15 @@ struct HunkBounds {
 	tier: Option<MatchTier>,
 }
 
+/// Contextual hints derived from adjacent hunks for disambiguation scoring.
+#[derive(Default)]
+struct AdjacentHints<'a> {
+	/// Content of the last context/removal line from the previous hunk (without prefix).
+	prev_hint: Option<&'a str>,
+	/// Content of the first context/removal line from the next hunk (without prefix).
+	next_hint: Option<&'a str>,
+}
+
 // endregion: --- Types
 
 /// Collapses runs of whitespace into a single space for normalized comparison.
@@ -57,17 +66,17 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 		Cow::Borrowed(patch_raw)
 	};
 
-	let mut lines = patch_raw.lines().peekable();
-	let mut completed_patch = String::new();
 	let orig_lines: Vec<&str> = original_content.lines().collect();
-	let mut total_delta: isize = 0;
-	let mut search_from: usize = 0;
 	let mut max_tier: Option<MatchTier> = None;
 
+	// -- First pass: collect all hunk bodies as raw line slices.
+	let mut raw_hunks: Vec<Vec<&str>> = Vec::new();
+	let mut non_hunk_prefix: Vec<&str> = Vec::new();
+
+	let mut lines = patch_raw.lines().peekable();
 	while let Some(line) = lines.next() {
 		let trimmed = line.trim();
 
-		// If it's a hunk header (recompute even if complete)
 		if trimmed.starts_with("@@") {
 			let mut hunk_lines = Vec::new();
 			while let Some(next_line) = lines.peek() {
@@ -85,34 +94,51 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 				hunk_lines.pop();
 			}
 
-			// Compute line numbers
-			let hunk_bounds = compute_hunk_bounds(&orig_lines, &hunk_lines, search_from)?;
-			let old_start = hunk_bounds.old_start;
-			let old_count = hunk_bounds.old_count;
-			let new_count = hunk_bounds.new_count;
-			let final_hunk_lines = hunk_bounds.final_hunk_lines;
-			let new_start = (old_start as isize + total_delta) as usize;
-
-			if let Some(t) = hunk_bounds.tier {
-				max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
-			}
-
-			// Update state for next hunk
-			search_from = old_start + old_count - 1;
-			total_delta += new_count as isize - old_count as isize;
-
-			// Standard Unified Diff: @@ -start,len +start,len @@
-			completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"));
-			for h_line in final_hunk_lines {
-				if h_line.is_empty() {
-					completed_patch.push(' ');
-				} else {
-					completed_patch.push_str(&h_line);
-				}
-				completed_patch.push('\n');
-			}
+			raw_hunks.push(hunk_lines);
 		} else {
-			completed_patch.push_str(line);
+			non_hunk_prefix.push(line);
+		}
+	}
+
+	// -- Second pass: compute adjacent hints and process each hunk.
+	let mut completed_patch = String::new();
+	let mut total_delta: isize = 0;
+	let mut search_from: usize = 0;
+
+	// Emit any non-hunk prefix lines (e.g. file headers)
+	for pline in &non_hunk_prefix {
+		completed_patch.push_str(pline);
+		completed_patch.push('\n');
+	}
+
+	for hunk_idx in 0..raw_hunks.len() {
+		// Build adjacent hints for disambiguation
+		let hints = build_adjacent_hints(&raw_hunks, hunk_idx);
+
+		let hunk_lines = &raw_hunks[hunk_idx];
+		let hunk_bounds = compute_hunk_bounds(&orig_lines, hunk_lines, search_from, &hints)?;
+		let old_start = hunk_bounds.old_start;
+		let old_count = hunk_bounds.old_count;
+		let new_count = hunk_bounds.new_count;
+		let final_hunk_lines = hunk_bounds.final_hunk_lines;
+		let new_start = (old_start as isize + total_delta) as usize;
+
+		if let Some(t) = hunk_bounds.tier {
+			max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
+		}
+
+		// Update state for next hunk
+		search_from = old_start + old_count.saturating_sub(1) - 1;
+		total_delta += new_count as isize - old_count as isize;
+
+		// Standard Unified Diff: @@ -start,len +start,len @@
+		completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"));
+		for h_line in final_hunk_lines {
+			if h_line.is_empty() {
+				completed_patch.push(' ');
+			} else {
+				completed_patch.push_str(&h_line);
+			}
 			completed_patch.push('\n');
 		}
 	}
@@ -121,6 +147,38 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 }
 
 // region:    --- Support
+
+/// Extracts the content (without prefix) of the last context/removal line in a hunk.
+fn last_context_or_removal_content<'a>(hunk: &[&'a str]) -> Option<&'a str> {
+	hunk.iter()
+		.rev()
+		.find(|l| l.starts_with(' ') || l.starts_with('-'))
+		.map(|l| if l.len() > 1 { &l[1..] } else { "" })
+}
+
+/// Extracts the content (without prefix) of the first context/removal line in a hunk.
+fn first_context_or_removal_content<'a>(hunk: &[&'a str]) -> Option<&'a str> {
+	hunk.iter()
+		.find(|l| l.starts_with(' ') || l.starts_with('-'))
+		.map(|l| if l.len() > 1 { &l[1..] } else { "" })
+}
+
+/// Builds adjacent hints for the hunk at `hunk_idx` from the collected raw hunks.
+fn build_adjacent_hints<'a>(raw_hunks: &[Vec<&'a str>], hunk_idx: usize) -> AdjacentHints<'a> {
+	let prev_hint = if hunk_idx > 0 {
+		last_context_or_removal_content(&raw_hunks[hunk_idx - 1])
+	} else {
+		None
+	};
+
+	let next_hint = if hunk_idx + 1 < raw_hunks.len() {
+		first_context_or_removal_content(&raw_hunks[hunk_idx + 1])
+	} else {
+		None
+	};
+
+	AdjacentHints { prev_hint, next_hint }
+}
 
 /// Checks if a trimmed line is a Markdown heading.
 fn is_markdown_heading(s: &str) -> bool {
@@ -135,6 +193,38 @@ fn strip_markdown_heading(s: &str) -> &str {
 /// Minimum length for a patch context fragment to be eligible for suffix matching.
 /// This prevents very short strings (e.g., `"x"`) from false-positive matching.
 const SUFFIX_MATCH_MIN_LEN: usize = 10;
+
+/// Checks if a string looks like a comment marker prefix (e.g., "//", "#", "<!--").
+/// Used by `suffix_match` to reject false positives where the non-matching prefix
+/// is actually a comment marker, preventing non-comment lines from matching
+/// comment lines via suffix.
+fn is_comment_marker_prefix(prefix: &str) -> bool {
+	prefix == "//"
+		|| prefix == "#"
+		|| prefix == "<!--"
+		|| prefix.starts_with("//")
+		|| (prefix.starts_with('#') && !prefix.starts_with("#!") && !prefix.starts_with("##"))
+		|| prefix.starts_with("<!--")
+}
+
+/// Strips a recognized comment marker from a trimmed line and returns the remaining content.
+/// Returns `None` if the line does not start with a recognized comment marker.
+///
+/// Supported markers: `//`, `#` (but not `#!` or `##`), `<!--` (with optional trailing `-->`).
+fn strip_comment_marker(trimmed: &str) -> Option<&str> {
+	if let Some(rest) = trimmed.strip_prefix("//") {
+		return Some(rest.trim());
+	}
+	if trimmed.starts_with('#') && !trimmed.starts_with("#!") && !trimmed.starts_with("##") {
+		return Some(trimmed[1..].trim());
+	}
+	if let Some(rest) = trimmed.strip_prefix("<!--") {
+		let rest = rest.trim();
+		let rest = rest.strip_suffix("-->").unwrap_or(rest);
+		return Some(rest.trim());
+	}
+	None
+}
 
 /// Strips underscore separators from numeric literals in a string.
 /// Removes `_` characters that are immediately preceded and followed by a hex digit
@@ -177,6 +267,10 @@ struct CandidateMatch {
 	/// Whether all non-blank matched lines have a uniform leading-whitespace delta.
 	/// Used as a scoring boost at the Resilient tier.
 	uniform_indent: bool,
+
+	/// Number of adjacent context hints that matched (0, 1, or 2).
+	/// Derived from checking original lines immediately before/after the matched region.
+	adjacent_hint_matches: usize,
 }
 
 /// Checks whether one trimmed line is a suffix of the other.
@@ -194,9 +288,19 @@ fn suffix_match(orig_trimmed: &str, patch_trimmed: &str, case_insensitive: bool)
 		normalize_ws(patch_trimmed)
 	};
 	if patch_norm.len() >= SUFFIX_MATCH_MIN_LEN && orig_norm.ends_with(&patch_norm) {
+		// Reject if the non-matching prefix is a comment marker (e.g., "// " or "# ").
+		// This prevents "do something" from suffix-matching "// do something".
+		let prefix = orig_norm[..orig_norm.len() - patch_norm.len()].trim();
+		if !prefix.is_empty() && is_comment_marker_prefix(prefix) {
+			return false;
+		}
 		return true;
 	}
 	if orig_norm.len() >= SUFFIX_MATCH_MIN_LEN && patch_norm.ends_with(&orig_norm) {
+		let prefix = patch_norm[..patch_norm.len() - orig_norm.len()].trim();
+		if !prefix.is_empty() && is_comment_marker_prefix(prefix) {
+			return false;
+		}
 		return true;
 	}
 	false
@@ -212,12 +316,14 @@ fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, is
 		false => search_from - candidate.idx,
 	};
 	// Primary: exact whitespace count (higher is better).
-	// Secondary: uniform indent bonus (1 if uniform, 0 otherwise).
-	// Tertiary: negative distance (closer is better, so negate).
+	// Secondary: adjacent hint matches (0-2, higher is better).
+	// Tertiary: uniform indent bonus (1 if uniform, 0 otherwise).
+	// Quaternary: negative distance (closer is better, so negate).
 	let uniform_bonus: usize = if candidate.uniform_indent { 1 } else { 0 };
+	let hint_bonus: usize = candidate.adjacent_hint_matches;
 	(
 		candidate.exact_ws_count,
-		uniform_bonus as isize * 1000 - distance as isize,
+		(hint_bonus as isize * 10_000) + (uniform_bonus as isize * 1000) - distance as isize,
 	)
 }
 
@@ -252,7 +358,19 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 						&& !p_stripped.is_empty()
 						&& (o_stripped != orig_trimmed || p_stripped != p_trimmed)
 						&& (o_stripped == p_stripped || normalize_ws(o_stripped) == normalize_ws(p_stripped))
+				} || {
+				// Comment-only line tolerance: when both lines are comment-only,
+				// strip the comment marker and compare remaining content with
+				// normalized whitespace. This handles minor wording/spacing
+				// differences in comments without affecting non-comment lines.
+				if let (Some(o_body), Some(p_body)) =
+					(strip_comment_marker(orig_trimmed), strip_comment_marker(p_trimmed))
+				{
+					!o_body.is_empty() && !p_body.is_empty() && normalize_ws(o_body) == normalize_ws(p_body)
+				} else {
+					false
 				}
+			}
 		}
 		MatchTier::Fuzzy => {
 			let o_t = orig_line.trim();
@@ -322,12 +440,55 @@ fn has_uniform_indent_delta(orig_lines: &[&str], hunk_lines: &[&str], matched_or
 	true
 }
 
+/// Checks whether an original line at a given index matches a hint line,
+/// using Resilient-tier matching for flexibility.
+fn hint_line_matches(orig_lines: &[&str], orig_idx: usize, hint: &str) -> bool {
+	if orig_idx >= orig_lines.len() {
+		return false;
+	}
+	let orig_line = orig_lines[orig_idx];
+	// Use Resilient matching for hint comparison (trimmed, normalized ws)
+	line_matches(orig_line, hint, MatchTier::Resilient)
+}
+
+/// Computes the number of adjacent hint matches for a candidate.
+fn compute_adjacent_hint_matches(
+	orig_lines: &[&str],
+	candidate_start: usize,
+	candidate_old_count: usize,
+	hints: &AdjacentHints<'_>,
+) -> usize {
+	let mut count = 0;
+
+	// Check previous hint: the original line immediately before candidate start
+	if let Some(prev_hint) = hints.prev_hint
+		&& !prev_hint.trim().is_empty()
+		&& candidate_start > 0
+		&& hint_line_matches(orig_lines, candidate_start - 1, prev_hint)
+	{
+		count += 1;
+	}
+
+	// Check next hint: the original line immediately after the candidate's matched region
+	if let Some(next_hint) = hints.next_hint
+		&& !next_hint.trim().is_empty()
+	{
+		let after_idx = candidate_start + candidate_old_count;
+		if hint_line_matches(orig_lines, after_idx, next_hint) {
+			count += 1;
+		}
+	}
+
+	count
+}
+
 /// Searches for candidate matches at a given tier, returning all found candidates.
 fn search_candidates_for_tier(
 	orig_lines: &[&str],
 	hunk_lines: &[&str],
 	search_from: usize,
 	tier: MatchTier,
+	hints: &AdjacentHints<'_>,
 ) -> Vec<CandidateMatch> {
 	let mut candidates: Vec<CandidateMatch> = Vec::new();
 
@@ -438,6 +599,31 @@ fn search_candidates_for_tier(
 
 			let uniform_indent = has_uniform_indent_delta(orig_lines, hunk_lines, &current_matches);
 
+			// Compute old_count for this candidate to determine the matched region span.
+			let candidate_old_count = {
+				let mut oc: usize = 0;
+				for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
+					if current_overhang.contains(&hl_idx) || current_skipped.contains(&hl_idx) {
+						continue;
+					}
+					if current_converted_to_add.contains(&hl_idx) {
+						continue;
+					}
+					if hl_line.starts_with('+') {
+						continue;
+					}
+					// context or removal line that matched in-file
+					if current_matches.iter().any(|(h, _)| *h == hl_idx) {
+						oc += 1;
+					}
+				}
+				// Also count skipped blank orig lines
+				oc += current_skipped_blanks_all.len();
+				oc
+			};
+
+			let adjacent_hint_matches = compute_adjacent_hint_matches(orig_lines, i, candidate_old_count, hints);
+
 			candidates.push(CandidateMatch {
 				idx: i,
 				tier,
@@ -448,6 +634,7 @@ fn search_candidates_for_tier(
 				skipped_blank_orig_indices: current_skipped_blanks_all,
 				exact_ws_count: current_exact_ws_count,
 				uniform_indent,
+				adjacent_hint_matches,
 			});
 		}
 	}
@@ -455,7 +642,12 @@ fn search_candidates_for_tier(
 	candidates
 }
 
-fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: usize) -> Result<HunkBounds> {
+fn compute_hunk_bounds(
+	orig_lines: &[&str],
+	hunk_lines: &[&str],
+	search_from: usize,
+	hints: &AdjacentHints<'_>,
+) -> Result<HunkBounds> {
 	// -- Empty original bootstrapping
 	// When the original content is empty (or only blank lines), auto-convert all
 	// context/removal lines to additions so that a FILE_PATCH against a non-existent
@@ -573,7 +765,7 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 	let mut candidates: Vec<CandidateMatch> = Vec::new();
 
 	for tier in tiers {
-		candidates = search_candidates_for_tier(orig_lines, hunk_lines, search_from, tier);
+		candidates = search_candidates_for_tier(orig_lines, hunk_lines, search_from, tier, hints);
 		if !candidates.is_empty() {
 			break;
 		}
