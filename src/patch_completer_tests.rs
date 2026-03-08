@@ -149,7 +149,11 @@ fn test_patch_completer_complete_resilient_comment_hash_not_markdown_heading() -
 	assert!(completed.contains("@@ -1,2 +1,2 @@"));
 	let tier = tier.ok_or("Should have a tier")?;
 	// Should match at Strict since the lines are identical
-	assert_eq!(tier, MatchTier::Strict, "Expected Strict tier for identical Markdown heading");
+	assert_eq!(
+		tier,
+		MatchTier::Strict,
+		"Expected Strict tier for identical Markdown heading"
+	);
 
 	Ok(())
 }
@@ -213,7 +217,11 @@ fn test_patch_completer_complete_fuzzy_string_delimiters_normal_code() -> Result
 	assert!(completed.contains("+let y = 10;"));
 	assert!(completed.contains("@@ -1,2 +1,2 @@"));
 	let tier = tier.ok_or("Should have a tier")?;
-	assert_eq!(tier, MatchTier::Strict, "Expected Strict tier for exact match with string delimiters");
+	assert_eq!(
+		tier,
+		MatchTier::Strict,
+		"Expected Strict tier for exact match with string delimiters"
+	);
 
 	Ok(())
 }
@@ -259,7 +267,11 @@ fn test_patch_completer_complete_fuzzy_numeric_underscores_decimal() -> Result<(
 	assert!(completed.contains("+let y = 42;"));
 	assert!(completed.contains("@@ -1,2 +1,2 @@"));
 	let tier = tier.ok_or("Should have a tier")?;
-	assert_eq!(tier, MatchTier::Fuzzy, "Expected Fuzzy tier for numeric underscore tolerance");
+	assert_eq!(
+		tier,
+		MatchTier::Fuzzy,
+		"Expected Fuzzy tier for numeric underscore tolerance"
+	);
 
 	Ok(())
 }
@@ -280,7 +292,11 @@ fn test_patch_completer_complete_fuzzy_numeric_underscores_hex() -> Result<()> {
 	assert!(completed.contains("+let val = 1;"));
 	assert!(completed.contains("@@ -1,2 +1,2 @@"));
 	let tier = tier.ok_or("Should have a tier")?;
-	assert_eq!(tier, MatchTier::Fuzzy, "Expected Fuzzy tier for hex numeric underscore tolerance");
+	assert_eq!(
+		tier,
+		MatchTier::Fuzzy,
+		"Expected Fuzzy tier for hex numeric underscore tolerance"
+	);
 
 	Ok(())
 }
@@ -298,7 +314,10 @@ fn test_patch_completer_complete_fuzzy_numeric_underscores_no_false_match() -> R
 	let result = complete(original, patch);
 
 	// -- Check
-	assert!(result.is_err(), "Should fail when numeric content differs beyond just underscore separators");
+	assert!(
+		result.is_err(),
+		"Should fail when numeric content differs beyond just underscore separators"
+	);
 
 	Ok(())
 }
@@ -1082,6 +1101,89 @@ end_marker
 	// First hunk should match the first block (line 1).
 	assert!(completed.contains("@@ -1,3 +1,3 @@"));
 	assert!(completed.contains("+    step_two();"));
+
+	Ok(())
+}
+
+// -- Double-Prefix (Literal Diff Marker Content) Tests
+
+/// Verifies that a removal line whose content starts with `-` (i.e., `--foo` in the patch)
+/// is correctly matched against the original line `-foo` and reconstructed into a valid
+/// completed patch that diffy can apply.
+#[test]
+fn test_patch_completer_complete_double_prefix_removal_of_minus_line() -> Result<()> {
+	// -- Setup & Fixtures
+	// Original file contains lines that themselves start with `-` and `+` (it's a diff-like doc).
+	let original = "\t<outer>\n-\t\t<param name=\"old\">0</param>\n\t\t<param name=\"execute\">1</param>\n\t</outer>\n";
+	// Patch: remove the `-`-prefixed line and add a plain replacement.
+	// `--\t\t<param name="old">0</param>` means: remove the line `-\t\t<param name="old">0</param>`
+	let patch = "@@\n \t<outer>\n--\t\t<param name=\"old\">0</param>\n+\t\t<param name=\"new\">0</param>\n \t\t<param name=\"execute\">1</param>\n";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	// The completed patch should have a removal line for the `-`-prefixed original content.
+	assert!(
+		completed.contains("-\t\t<param name=\"old\">0</param>")
+			|| completed.contains("--\t\t<param name=\"old\">0</param>"),
+		"Should contain removal of the minus-prefixed line. Got:\n{completed}"
+	);
+	assert!(completed.contains("+\t\t<param name=\"new\">0</param>"));
+
+	Ok(())
+}
+
+/// Verifies that a removal line whose content starts with `+` (i.e., `-+foo` in the patch)
+/// is correctly matched against the original line `+foo` and processed without diffy
+/// misinterpreting the reconstructed `-+foo` line.
+#[test]
+fn test_patch_completer_complete_double_prefix_removal_of_plus_line() -> Result<()> {
+	// -- Setup & Fixtures
+	// Original contains a line that starts with `+` (it's a diff-like doc).
+	let original =
+		"\t<outer>\n+\t\t<param name=\"outputLabelmap\">0</param>\n\t\t<param name=\"execute\">1</param>\n\t</outer>\n";
+	// Patch: remove the `+`-prefixed line using `-+` double-prefix notation.
+	// `-+\t\t<param name="outputLabelmap">0</param>` means: remove `+\t\t<param name="outputLabelmap">0</param>`
+	let patch = "@@\n \t<outer>\n-+\t\t<param name=\"outputLabelmap\">0</param>\n+\t\t<param name=\"outputLabelmap\">1</param>\n \t\t<param name=\"execute\">1</param>\n";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	assert!(
+		completed.contains("+\t\t<param name=\"outputLabelmap\">1</param>"),
+		"Should contain the addition line. Got:\n{completed}"
+	);
+	// The reconstructed hunk should reference the `+`-prefixed original line as a removal.
+	assert!(
+		completed.contains("-+\t\t<param name=\"outputLabelmap\">0</param>")
+			|| completed.contains("+\t\t<param name=\"outputLabelmap\">0</param>"),
+		"Should contain the removal of the plus-prefixed line. Got:\n{completed}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that context lines whose content starts with a space (` foo` in the original,
+/// encoded as `  foo` with double-space prefix in the patch) are handled correctly.
+/// This mirrors the `- ` (context of a space-prefixed line) scenario in test-15.
+#[test]
+fn test_patch_completer_complete_double_prefix_context_space_prefixed_line() -> Result<()> {
+	// -- Setup & Fixtures
+	// Original line content starts with a space (e.g., from a prior diff context marker).
+	let original = " \t\t<param name=\"execute\">1</param>\n \t\t<param name=\"inputUids\">\"data0\" </param>\n";
+	// Context line with double-space prefix: `  \t\t<param...>` means context for ` \t\t<param...>`
+	let patch = "@@\n  \t\t<param name=\"execute\">1</param>\n- \t\t<param name=\"inputUids\">\"data0\" </param>\n+ \t\t<param name=\"inputUids\">\"data1\" </param>\n";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	assert!(
+		completed.contains("+ \t\t<param name=\"inputUids\">\"data1\" </param>"),
+		"Should contain the addition line. Got:\n{completed}"
+	);
 
 	Ok(())
 }

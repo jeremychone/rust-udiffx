@@ -1,6 +1,6 @@
 //! Integration tests that run against scenarios in tests/data/test-files/
 
-use assertables::assert_contains;
+use assertables::{assert_contains, assert_not_contains};
 use simple_fs::SPath;
 use udiffx::for_test::apply_patch;
 use udiffx::{FileDirective, extract_file_changes};
@@ -201,6 +201,19 @@ fn test_patches_test_14() -> Result<()> {
 	);
 	// Verify the rest of the file is intact
 	assert_contains!(content, "shutdown_database_connection");
+
+	Ok(())
+}
+
+#[test]
+fn test_patches_test_15() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-15", false)?;
+
+	// -- Check
+	assert_contains!(content, "outputMeshes");
+	assert_not_contains!(content, "predictLabels");
+	assert_not_contains!(content, "outputLabelmap");
 
 	Ok(())
 }

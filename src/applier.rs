@@ -6,6 +6,8 @@ use diffy::{Patch, apply};
 use simple_fs::{SPath, ensure_file_dir, read_to_string, safer_trash_dir, safer_trash_file};
 use std::fs;
 
+const CRLF_SAVE_TO_LDF: bool = true;
+
 /// Executes the file changes defined in `AipFileChanges` relative to `base_dir`.
 pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
 	let base_dir = base_dir.into();
@@ -151,16 +153,34 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 
 /// Applies a patch content to an original string, handling potential patch completion.
 pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<(String, Option<MatchTier>)> {
+	let original_had_crlf = original.contains("\r\n");
+
+	let original_lf = if original_had_crlf {
+		original.replace("\r\n", "\n")
+	} else {
+		original.to_string()
+	};
+	let patch_lf = if patch_raw.contains("\r\n") {
+		patch_raw.replace("\r\n", "\n")
+	} else {
+		patch_raw.to_string()
+	};
+
 	// Ensure original has a trailing newline (POSIX compliance)
-	let mut original_fixed = original.to_string();
+	let mut original_fixed = original_lf;
 	if !original_fixed.is_empty() && !original_fixed.ends_with('\n') {
 		original_fixed.push('\n');
 	}
 
-	let (completed_patch, tier) = patch_completer::complete(&original_fixed, patch_raw)?;
+	let (completed_patch, tier) = patch_completer::complete(&original_fixed, &patch_lf)?;
 	let patch_obj =
 		Patch::from_str(&completed_patch).map_err(|err| Error::diffy_parse_patch(file_path, err, &completed_patch))?;
-	let new_content =
+	let mut new_content =
 		apply(&original_fixed, &patch_obj).map_err(|err| Error::diffy_apply_patch(file_path, err, &completed_patch))?;
+
+	if !CRLF_SAVE_TO_LDF && original_had_crlf {
+		new_content = new_content.replace('\n', "\r\n");
+	}
+
 	Ok((new_content, tier))
 }

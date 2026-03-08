@@ -1,0 +1,6 @@
+ 		<property>
+			<param name="outputMeshes">1</param>
+-			<param name="predictLabels">0</param>
+-			<param name="allFrames">1</param>
++			<param name="outputLabelmap">0</param>
+ 			<param name="execute">1</param>
