@@ -94,7 +94,13 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 				hunk_lines.pop();
 			}
 
-			raw_hunks.push(hunk_lines);
+			let has_add = hunk_lines.iter().any(|l| l.starts_with('+'));
+			let has_remove = hunk_lines.iter().any(|l| l.starts_with('-'));
+			let is_actionable = has_add || has_remove;
+
+			if is_actionable {
+				raw_hunks.push(hunk_lines);
+			}
 		} else {
 			non_hunk_prefix.push(line);
 		}
@@ -141,6 +147,10 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 			}
 			completed_patch.push('\n');
 		}
+	}
+
+	if raw_hunks.is_empty() && non_hunk_prefix.is_empty() {
+		return Ok((String::new(), None));
 	}
 
 	Ok((completed_patch, max_tier))

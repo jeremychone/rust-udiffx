@@ -1187,3 +1187,104 @@ fn test_patch_completer_complete_double_prefix_context_space_prefixed_line() -> 
 
 	Ok(())
 }
+
+/// Verifies that a surround-only hunk between actionable hunks is ignored,
+/// and actionable hunks still complete normally.
+#[test]
+fn test_patch_completer_complete_ignores_surround_only_hunk_between_actionable() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "line 1\nline 2\nline 3\nline 4\nline 5\n";
+	let patch = "\
+@@
+ line 1
+-line 2
++line 2 updated
+ line 3
+@@
+ line 3
+ line 4
+@@
+ line 4
+-line 5
++line 5 updated
+";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("-line 2\n+line 2 updated"));
+	assert!(completed.contains("-line 5\n+line 5 updated"));
+	assert!(!completed.contains("@@ -3,2 +3,2 @@"));
+
+	Ok(())
+}
+
+/// Verifies that when all hunks are surround-only, completion returns a no-op patch.
+#[test]
+fn test_patch_completer_complete_all_hunks_surround_only_noop() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "line 1\nline 2\n";
+	let patch = "@@\n line 1\n line 2\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.is_empty(), "Expected empty completed patch for no-op hunks");
+	assert!(tier.is_none(), "Expected no tier for no-op hunks");
+
+	Ok(())
+}
+
+/// Verifies that a surround-only hunk at the start is ignored, while subsequent
+/// actionable hunks are still processed.
+#[test]
+fn test_patch_completer_complete_ignores_surround_only_hunk_at_start() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "a\nb\nc\n";
+	let patch = "\
+@@
+ a
+ b
+@@
+ b
+-c
++c2
+";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("-c\n+c2"));
+	assert!(!completed.contains("@@ -1,2 +1,2 @@"));
+
+	Ok(())
+}
+
+/// Verifies that a surround-only hunk at the end is ignored, while prior
+/// actionable hunks are still processed.
+#[test]
+fn test_patch_completer_complete_ignores_surround_only_hunk_at_end() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "a\nb\nc\n";
+	let patch = "\
+@@
+ a
+-b
++b2
+ c
+@@
+ c
+";
+
+	// -- Exec
+	let (completed, _) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("-b\n+b2"));
+	assert!(!completed.contains("@@ -3,1 +3,1 @@"));
+
+	Ok(())
+}
