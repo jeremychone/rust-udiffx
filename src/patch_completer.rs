@@ -190,7 +190,10 @@ fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, is
 	// Secondary: uniform indent bonus (1 if uniform, 0 otherwise).
 	// Tertiary: negative distance (closer is better, so negate).
 	let uniform_bonus: usize = if candidate.uniform_indent { 1 } else { 0 };
-	(candidate.exact_ws_count, uniform_bonus as isize * 1000 - distance as isize)
+	(
+		candidate.exact_ws_count,
+		uniform_bonus as isize * 1000 - distance as isize,
+	)
 }
 
 /// Checks whether an original line matches a patch line at the given tier.
@@ -254,7 +257,7 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 
 /// Returns the number of leading whitespace characters (spaces and tabs) in a line.
 fn leading_ws_len(line: &str) -> usize {
-	line.len() - line.trim_start_matches(|c: char| c == ' ' || c == '\t').len()
+	line.len() - line.trim_start_matches([' ', '\t']).len()
 }
 
 /// Checks whether all non-blank matched pairs have a uniform leading-whitespace delta.
@@ -419,6 +422,41 @@ fn search_candidates_for_tier(
 }
 
 fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: usize) -> Result<HunkBounds> {
+	// -- Empty original bootstrapping
+	// When the original content is empty (or only blank lines), auto-convert all
+	// context/removal lines to additions so that a FILE_PATCH against a non-existent
+	// or empty file succeeds instead of failing to find context.
+	let orig_is_empty = orig_lines.is_empty() || orig_lines.iter().all(|l| l.trim().is_empty());
+
+	if orig_is_empty {
+		let has_context_or_removal = hunk_lines.iter().any(|l| !l.starts_with('+'));
+		// If there are context/removal lines, convert them all to additions.
+		// If there are only addition lines, fall through to the normal append logic below.
+		if has_context_or_removal {
+			let mut final_hunk_lines = Vec::new();
+			let mut new_count = 0;
+
+			for hl in hunk_lines {
+				if hl.starts_with('+') {
+					final_hunk_lines.push(hl.to_string());
+				} else {
+					// Convert context (' ') or removal ('-') to addition ('+')
+					let content = if hl.len() > 1 { &hl[1..] } else { "" };
+					final_hunk_lines.push(format!("+{content}"));
+				}
+				new_count += 1;
+			}
+
+			return Ok(HunkBounds {
+				old_start: 1,
+				old_count: 0,
+				new_count,
+				final_hunk_lines,
+				tier: None,
+			});
+		}
+	}
+
 	// -- Pre-check for pattern existence
 	let context_lines_count = hunk_lines.iter().filter(|l| !l.starts_with('+')).count();
 
@@ -599,595 +637,7 @@ fn compute_hunk_bounds(orig_lines: &[&str], hunk_lines: &[&str], search_from: us
 // region:    --- Tests
 
 #[cfg(test)]
-mod tests {
-	type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
-
-	use super::*;
-
-	#[test]
-	fn test_patch_completer_complete_simple() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "line 1\nline 2\nline 3\n";
-		let patch = "@@\n line 2\n+line 2.5\n line 3\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -2,2 +2,3 @@"));
-		assert!(completed.contains(" line 2\n+line 2.5\n line 3"));
-
-		Ok(())
-	}
-
-	#[test]
-	fn test_patch_completer_complete_partial_suffix() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "This is a long line with some suffix.\nAnother line.\n";
-		// The LLM only provides the suffix as context
-		let patch = "@@\n some suffix.\n+New line after suffix.\n Another line.\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -1,2 +1,3 @@"));
-		assert!(completed.contains(" some suffix.\n+New line after suffix.\n Another line."));
-
-		Ok(())
-	}
-
-	#[test]
-	fn test_patch_completer_complete_whitespace_mismatch() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "    Indented line\n";
-		// LLM might not preserve indentation in context lines
-		let patch = "@@\n Indented line\n+    New indented line\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -1,1 +1,2 @@"));
-
-		Ok(())
-	}
-
-	/// Verifies that a short substring like "x" does not false-positive match a longer line.
-	/// The old `contains`-based logic would have matched "x" against "box of foxes".
-	#[test]
-	fn test_patch_completer_complete_no_false_positive_contains_short() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "box of foxes\nthe letter x\nanother line\n";
-		// Context line "x" should only match "the letter x", not "box of foxes"
-		let patch = "@@\n the letter x\n+inserted after x\n another line\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Should match starting at line 2 ("the letter x"), not line 1 ("box of foxes")
-		assert!(completed.contains("@@ -2,2 +2,3 @@"));
-		assert!(completed.contains("+inserted after x"));
-
-		Ok(())
-	}
-
-	/// Verifies that a line which is a substring of another does not false-positive match.
-	/// E.g., context "name" should not match original "namespace" via contains.
-	#[test]
-	fn test_patch_completer_complete_no_false_positive_contains_substring() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "namespace\nname\nvalue\n";
-		// Context "name" should match line 2, not line 1 ("namespace")
-		let patch = "@@\n name\n+new name line\n value\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -2,2 +2,3 @@"));
-		assert!(completed.contains("+new name line"));
-
-		Ok(())
-	}
-
-	/// Verifies normalized whitespace equality works (multiple spaces collapsed).
-	#[test]
-	fn test_patch_completer_complete_normalized_ws_equality() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "fn   main()  {\n    println!(\"hello\");\n}\n";
-		// LLM collapses multiple spaces to single space
-		let patch = "@@\n fn main() {\n-    println!(\"hello\");\n+    println!(\"world\");\n }\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -1,3 +1,3 @@"));
-		assert!(completed.contains("+    println!(\"world\");"));
-
-		Ok(())
-	}
-
-	/// Verifies that when duplicate patterns exist, the scoring system prefers
-	/// the match with exact whitespace over a normalized match.
-	#[test]
-	fn test_patch_completer_complete_scoring_exact_ws_preferred() -> Result<()> {
-		// -- Setup & Fixtures
-		// Two blocks that match trimmed, but only the second has exact whitespace.
-		let original = "\
-    fn hello() {
-        println!(\"hello\");
-    }
-fn hello() {
-    println!(\"hello\");
-}
-";
-		// Patch context uses no leading indentation, matching the second block exactly.
-		let patch = "@@\n fn hello() {\n-    println!(\"hello\");\n+    println!(\"world\");\n }\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Should match the second block (line 4), not the first (line 1).
-		assert!(completed.contains("@@ -4,3 +4,3 @@"));
-		assert!(completed.contains("+    println!(\"world\");"));
-
-		Ok(())
-	}
-
-	/// Verifies that when two identical blocks exist, the match closest to
-	/// search_from (i.e., the first one) is preferred.
-	#[test]
-	fn test_patch_completer_complete_scoring_proximity_preferred() -> Result<()> {
-		// -- Setup & Fixtures
-		// Two identical blocks; scoring should prefer the first (closer to search_from=0).
-		let original = "\
-fn greet() {
-    println!(\"hi\");
-}
-fn other() {}
-fn greet() {
-    println!(\"hi\");
-}
-";
-		let patch = "@@\n fn greet() {\n-    println!(\"hi\");\n+    println!(\"hey\");\n }\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Both blocks are identical (same exact_ws_count), so proximity wins: line 1.
-		assert!(completed.contains("@@ -1,3 +1,3 @@"));
-		assert!(completed.contains("+    println!(\"hey\");"));
-
-		Ok(())
-	}
-
-	/// Verifies that a blank context line in the patch that doesn't match a non-blank
-	/// original line causes a match failure at that position, preventing alignment drift.
-	#[test]
-	fn test_patch_completer_complete_blank_context_no_skip() -> Result<()> {
-		// -- Setup & Fixtures
-		// Original has no blank line between line 2 and line 3.
-		let original = "line 1\nline 2\nline 3\nline 4\n";
-		// Patch has a blank context line between "line 2" and "line 3" that doesn't exist
-		// in the original. This should NOT silently skip and cause drift.
-		let patch = "@@\n line 2\n \n-line 3\n+line 3 modified\n line 4\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// The unmatched blank context line is converted to an addition, and the rest
-		// of the hunk aligns correctly without drift.
-		assert!(completed.contains("@@ -2,3 +2,4 @@"));
-		assert!(completed.contains("+line 3 modified"));
-		// "line 3" should be a removal line (not misaligned)
-		assert!(completed.contains("-line 3\n"));
-
-		Ok(())
-	}
-
-	/// Verifies that blank context lines match correctly when the original also has
-	/// blank lines in the corresponding positions.
-	#[test]
-	fn test_patch_completer_complete_blank_context_matches_blank_original() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "line 1\nline 2\n\nline 4\nline 5\n";
-		// Blank context line aligns with the blank line in original (line 3).
-		let patch = "@@\n line 2\n \n-line 4\n+line 4 modified\n line 5\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -2,4 +2,4 @@"));
-		assert!(completed.contains("+line 4 modified"));
-
-		Ok(())
-	}
-
-	/// Verifies that when a blank context line doesn't match at one position,
-	/// the search continues and finds the correct position where it does match.
-	#[test]
-	fn test_patch_completer_complete_blank_context_finds_correct_position() -> Result<()> {
-		// -- Setup & Fixtures
-		// First "line A" is followed by non-blank "line B", second "line A" is followed by blank.
-		let original = "line A\nline B\nline C\nline A\n\nline D\n";
-		// Patch expects blank line after "line A", so it should match the second occurrence.
-		let patch = "@@\n line A\n \n-line D\n+line D modified\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Should match the second "line A" at line 4, not the first at line 1.
-		assert!(completed.contains("@@ -4,3 +4,3 @@"));
-		assert!(completed.contains("+line D modified"));
-
-		Ok(())
-	}
-
-	/// Verifies that when a strict match exists, it is preferred over a resilient match
-	/// at a different position.
-	#[test]
-	fn test_patch_completer_complete_strict_match_preferred() -> Result<()> {
-		// -- Setup & Fixtures
-		// Line 1 has extra leading spaces (only matches via trimmed/resilient).
-		// Line 4 matches strictly (exact same text as patch context).
-		let original = "\
-    fn do_work() {
-    old_call();
-    }
-fn do_work() {
-    old_call();
-}
-";
-		// Patch context has no leading indentation, matching the second block strictly.
-		let patch = "@@\n fn do_work() {\n-    old_call();\n+    new_call();\n }\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Should match the second block (line 4) via strict, not the first (line 1) via resilient.
-		assert!(completed.contains("@@ -4,3 +4,3 @@"));
-		assert!(completed.contains("+    new_call();"));
-
-		Ok(())
-	}
-
-	/// Verifies that a casing mismatch in context lines is resolved by the fuzzy tier.
-	#[test]
-	fn test_patch_completer_complete_case_insensitive_fallback() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "## Section Title\nSome content here.\nMore content.\n";
-		// Patch context uses different casing ("section title" vs "Section Title").
-		let patch = "@@\n ## section title\n-Some content here.\n+Replaced content here.\n More content.\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -1,3 +1,3 @@"));
-		assert!(completed.contains("+Replaced content here."));
-
-		Ok(())
-	}
-
-	/// Verifies that when a resilient match exists (whitespace difference), fuzzy is not needed.
-	/// Indirectly confirmed by the correct match position and successful patch application.
-	#[test]
-	fn test_patch_completer_complete_fuzzy_not_used_when_resilient_matches() -> Result<()> {
-		// -- Setup & Fixtures
-		// Original has extra spaces; patch context has single spaces.
-		// This should match at resilient tier (whitespace normalization), not fuzzy.
-		let original = "fn   example()  {\n    let x = 1;\n    let y = 2;\n}\n";
-		let patch = "@@\n fn example() {\n-    let x = 1;\n+    let x = 42;\n     let y = 2;\n }\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Should match at line 1 via resilient tier (normalized whitespace).
-		assert!(completed.contains("@@ -1,4 +1,4 @@"));
-		assert!(completed.contains("+    let x = 42;"));
-
-		Ok(())
-	}
-
-	/// Verifies that multiple blank lines in the original file can be skipped
-	/// if the patch context only has one (or none), provided we're in Resilient tier.
-	#[test]
-	fn test_patch_completer_complete_skips_extra_blanks_original() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "line 1\n\n\nline 2\n";
-		// Patch context misses the two extra blank lines.
-		let patch = "@@\n line 1\n-line 2\n+line 2 modified\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// old_count should be 4 (line 1, blank, blank, line 2)
-		assert!(completed.contains("@@ -1,4 +1,4 @@"));
-		// The extra blanks should be in the patch as context
-		assert!(completed.contains(" line 1\n \n \n-line 2\n+line 2 modified"));
-
-		Ok(())
-	}
-
-	/// Verifies that a removal line that is a suffix of the original line
-	/// matches at Resilient tier via suffix matching.
-	#[test]
-	fn test_patch_completer_complete_removal_suffix_match() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "    pub fn initialize_database_connection(config: &Config) -> Result<()> {\n        let pool = create_connection_pool(config)?;\n        Ok(())\n    }\n";
-		// The LLM truncates the removal line, providing only the suffix
-		let patch = "@@\n initialize_database_connection(config: &Config) -> Result<()> {\n-create_connection_pool(config)?;\n+create_async_pool(config).await?;\n Ok(())\n";
-
-		// -- Exec
-		let (completed, tier) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("+create_async_pool(config).await?;"));
-		// Should have matched (the removal line is a suffix of the original)
-		assert!(completed.contains("@@ -1,"));
-		// Tier should be Resilient (not Strict, since suffix matching is needed)
-		let tier = tier.ok_or("Should have a tier")?;
-		assert!(
-			tier >= MatchTier::Resilient,
-			"Expected at least Resilient tier for suffix removal match"
-		);
-
-		Ok(())
-	}
-
-	/// Verifies that a short removal line (below SUFFIX_MATCH_MIN_LEN) does NOT
-	/// false-positive match via suffix matching against a longer original line.
-	#[test]
-	fn test_patch_completer_complete_removal_short_no_suffix_match() -> Result<()> {
-		// -- Setup & Fixtures
-		// "pool" is only 4 chars, well below the 10-char minimum for suffix matching
-		let original = "create_connection_pool\nthe word pool\nanother line\n";
-		// Removal line "pool" should match "the word pool" exactly (line 2), not
-		// "create_connection_pool" (line 1) via suffix, because "pool" is too short for suffix.
-		let patch = "@@\n the word pool\n-another line\n+replaced line\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Should match starting at line 2 ("the word pool"), not line 1
-		assert!(completed.contains("@@ -2,2 +2,2 @@"));
-		assert!(completed.contains("+replaced line"));
-
-		Ok(())
-	}
-
-	#[test]
-	fn test_patch_completer_complete_resilient_trailing_semicolon_orig_has() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "let x = 1;\nlet y = 2;\n";
-		// Patch context omits the trailing semicolon on "let x = 1"
-		let patch = "@@\n let x = 1\n-let y = 2;\n+let y = 42;\n";
-
-		// -- Exec
-		let (completed, tier) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("+let y = 42;"));
-		assert!(completed.contains("@@ -1,2 +1,2 @@"));
-		let tier = tier.ok_or("Should have a tier")?;
-		assert!(
-			tier >= MatchTier::Resilient,
-			"Expected at least Resilient tier for trailing semicolon tolerance"
-		);
-		// Should NOT need Fuzzy
-		assert!(tier <= MatchTier::Resilient, "Should match at Resilient, not Fuzzy");
-
-		Ok(())
-	}
-
-	#[test]
-	fn test_patch_completer_complete_resilient_trailing_comma_orig_has() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "    field_one: String,\n    field_two: i32,\n}\n";
-		// Patch context omits the trailing comma on "field_one: String"
-		let patch = "@@\n field_one: String\n-    field_two: i32,\n+    field_two: i64,\n }\n";
-
-		// -- Exec
-		let (completed, tier) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("+    field_two: i64,"));
-		assert!(completed.contains("@@ -1,3 +1,3 @@"));
-		let tier = tier.ok_or("Should have a tier")?;
-		assert!(
-			tier >= MatchTier::Resilient,
-			"Expected at least Resilient tier for trailing comma tolerance"
-		);
-		assert!(tier <= MatchTier::Resilient, "Should match at Resilient, not Fuzzy");
-
-		Ok(())
-	}
-
-	#[test]
-	fn test_patch_completer_complete_resilient_trailing_semi_patch_adds() -> Result<()> {
-		// -- Setup & Fixtures
-		let original = "let x = 1\nlet y = 2\n";
-		// Patch context adds a trailing semicolon that the original doesn't have
-		let patch = "@@\n let x = 1;\n-let y = 2\n+let y = 42\n";
-
-		// -- Exec
-		let (completed, tier) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("+let y = 42"));
-		assert!(completed.contains("@@ -1,2 +1,2 @@"));
-		let tier = tier.ok_or("Should have a tier")?;
-		assert!(
-			tier >= MatchTier::Resilient,
-			"Expected at least Resilient tier when patch adds trailing semicolon"
-		);
-		assert!(tier <= MatchTier::Resilient, "Should match at Resilient, not Fuzzy");
-
-		Ok(())
-	}
-
-	/// Verifies that trailing semicolon/comma tolerance does NOT cause a false match
-	/// when the line content itself differs (e.g., "let z = 1" vs "let x = 1;").
-	#[test]
-	fn test_patch_completer_complete_resilient_trailing_semi_no_match_different_content() -> Result<()> {
-		// -- Setup & Fixtures
-		// Lines differ in more than just trailing comma/semicolon
-		let original = "let x = 1;\nlet y = 2;\n";
-		let patch = "@@\n let z = 1\n-let y = 2;\n+let y = 42;\n";
-
-		// -- Exec
-		let result = complete(original, patch);
-
-		// -- Check
-		// "let z = 1" should not match "let x = 1;" because content differs (z vs x),
-		// so the patch should fail to find a match.
-		assert!(
-			result.is_err(),
-			"Should fail when content differs beyond trailing punctuation"
-		);
-
-		Ok(())
-	}
-
-	/// Verifies that when two copies of a block exist at different indentation levels,
-	/// the one with a uniform indent delta matching the patch is preferred.
-	#[test]
-	fn test_patch_completer_complete_uniform_indent_preferred() -> Result<()> {
-		// -- Setup & Fixtures
-		// Block A (line 1-3): indented with 4 spaces.
-		// Block B (line 4-6): indented with 8 spaces.
-		// Patch context uses 8 spaces, matching Block B exactly at Strict.
-		// But if we pretend the patch uses 6 spaces (neither matches exactly),
-		// Block B is a uniform +2 delta while Block A is a uniform -2 delta.
-		// Both are uniform so proximity wins for block A. Let's instead test
-		// that a uniform indent block is preferred over a non-uniform one.
-		let original = "\
-    fn work() {
-        let a = 1;
-    }
-      fn work() {
-            let a = 1;
-      }
-";
-		// Patch context: no indentation. Block A (4-space indent) has uniform delta +4.
-		// Block B has non-uniform delta: "fn work()" is +6, "let a = 1;" is +12, closing is +6.
-		let patch = "@@\n fn work() {\n-    let a = 1;\n+    let a = 2;\n }\n";
-
-		// -- Exec
-		let (completed, tier) = complete(original, patch)?;
-
-		// -- Check
-		// Should prefer Block A (line 1) because its indent delta is uniform (+4 for all lines),
-		// while Block B's delta is non-uniform.
-		assert!(completed.contains("@@ -1,3 +1,3 @@"), "Should match block A at line 1");
-		assert!(completed.contains("+    let a = 2;"));
-		let tier = tier.ok_or("Should have a tier")?;
-		assert!(
-			tier >= MatchTier::Resilient,
-			"Expected at least Resilient tier for indentation mismatch"
-		);
-
-		Ok(())
-	}
-
-	/// Verifies that a uniformly re-indented block (all lines shifted by the same amount)
-	/// matches successfully at the Resilient tier.
-	#[test]
-	fn test_patch_completer_complete_uniform_indent_simple() -> Result<()> {
-		// -- Setup & Fixtures
-		// Original is indented with 4 spaces.
-		let original = "    fn hello() {\n        println!(\"hi\");\n    }\n";
-		// Patch context uses no indentation (uniform -4 delta).
-		let patch = "@@\n fn hello() {\n-    println!(\"hi\");\n+    println!(\"world\");\n }\n";
-
-		// -- Exec
-		let (completed, tier) = complete(original, patch)?;
-
-		// -- Check
-		assert!(completed.contains("@@ -1,3 +1,3 @@"));
-		assert!(completed.contains("+    println!(\"world\");"));
-		let tier = tier.ok_or("Should have a tier")?;
-		assert!(
-			tier >= MatchTier::Resilient,
-			"Expected at least Resilient tier for uniform indent shift"
-		);
-
-		Ok(())
-	}
-
-	/// Verifies that when indent deltas are inconsistent across lines, the candidate
-	/// still matches (via existing trimmed comparison) but uniform_indent is false,
-	/// so it scores lower than a uniform-indent candidate.
-	#[test]
-	fn test_patch_completer_complete_non_uniform_indent_still_matches() -> Result<()> {
-		// -- Setup & Fixtures
-		// Original has inconsistent indentation.
-		let original = "    fn foo() {\n      let x = 1;\n  }\n";
-		// Patch context uses no indentation. Deltas: +4, +6, +2 (non-uniform).
-		let patch = "@@\n fn foo() {\n-  let x = 1;\n+  let x = 2;\n }\n";
-
-		// -- Exec
-		let (completed, tier) = complete(original, patch)?;
-
-		// -- Check
-		// Should still match (trimmed comparison works), just with lower score.
-		assert!(completed.contains("@@ -1,3 +1,3 @@"));
-		assert!(completed.contains("+  let x = 2;"));
-		let tier = tier.ok_or("Should have a tier")?;
-		assert!(
-			tier >= MatchTier::Resilient,
-			"Expected at least Resilient tier for trimmed match"
-		);
-
-		Ok(())
-	}
-
-	/// Verifies disambiguation: two identical-content blocks where one has uniform indent
-	/// delta relative to the patch and the other does not. The uniform one should win.
-	#[test]
-	fn test_patch_completer_complete_uniform_indent_disambiguation() -> Result<()> {
-		// -- Setup & Fixtures
-		// Block 1 (lines 1-3): non-uniform indent (2, 8, 2 spaces) relative to patch (0, 4, 0).
-		//   Deltas: +2, +4, +2 → non-uniform.
-		// Block 2 (lines 5-7): uniform indent (4, 8, 4 spaces) relative to patch (0, 4, 0).
-		//   Deltas: +4, +4, +4 → uniform.
-		// Filler line between to separate them.
-		let original = "  fn calc() {
-        let val = 10;
-  }
-other_stuff();
-    fn calc() {
-        let val = 10;
-    }
-";
-		// Patch context with no indentation → Block 1 non-uniform, Block 2 uniform.
-		let patch = "@@\n fn calc() {\n-    let val = 10;\n+    let val = 20;\n }\n";
-
-		// -- Exec
-		let (completed, _) = complete(original, patch)?;
-
-		// -- Check
-		// Should prefer Block 2 (line 5) because it has uniform indent delta.
-		assert!(
-			completed.contains("@@ -5,3 +5,3 @@"),
-			"Should match block 2 at line 5 due to uniform indent. Got: {completed}"
-		);
-		assert!(completed.contains("+    let val = 20;"));
-
-		Ok(())
-	}
-}
+#[path = "patch_completer_tests.rs"]
+mod tests;
 
 // endregion: --- Tests
