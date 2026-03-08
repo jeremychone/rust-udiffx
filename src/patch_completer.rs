@@ -866,6 +866,51 @@ fn do_work() {
 
 		Ok(())
 	}
+
+	/// Verifies that a removal line that is a suffix of the original line
+	/// matches at Resilient tier via suffix matching.
+	#[test]
+	fn test_patch_completer_complete_removal_suffix_match() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "    pub fn initialize_database_connection(config: &Config) -> Result<()> {\n        let pool = create_connection_pool(config)?;\n        Ok(())\n    }\n";
+		// The LLM truncates the removal line, providing only the suffix
+		let patch = "@@\n initialize_database_connection(config: &Config) -> Result<()> {\n-create_connection_pool(config)?;\n+create_async_pool(config).await?;\n Ok(())\n";
+
+		// -- Exec
+		let (completed, tier) = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("+create_async_pool(config).await?;"));
+		// Should have matched (the removal line is a suffix of the original)
+		assert!(completed.contains("@@ -1,"));
+		// Tier should be Resilient (not Strict, since suffix matching is needed)
+		let tier = tier.ok_or("Should have a tier")?;
+		assert!(tier >= MatchTier::Resilient, "Expected at least Resilient tier for suffix removal match");
+
+		Ok(())
+	}
+
+	/// Verifies that a short removal line (below SUFFIX_MATCH_MIN_LEN) does NOT
+	/// false-positive match via suffix matching against a longer original line.
+	#[test]
+	fn test_patch_completer_complete_removal_short_no_suffix_match() -> Result<()> {
+		// -- Setup & Fixtures
+		// "pool" is only 4 chars, well below the 10-char minimum for suffix matching
+		let original = "create_connection_pool\nthe word pool\nanother line\n";
+		// Removal line "pool" should match "the word pool" exactly (line 2), not
+		// "create_connection_pool" (line 1) via suffix, because "pool" is too short for suffix.
+		let patch = "@@\n the word pool\n-another line\n+replaced line\n";
+
+		// -- Exec
+		let (completed, _) = complete(original, patch)?;
+
+		// -- Check
+		// Should match starting at line 2 ("the word pool"), not line 1
+		assert!(completed.contains("@@ -2,2 +2,2 @@"));
+		assert!(completed.contains("+replaced line"));
+
+		Ok(())
+	}
 }
 
 // endregion: --- Tests

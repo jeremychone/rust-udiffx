@@ -1,0 +1,12 @@
+    pub fn initialize_database_connection(config: &DatabaseConfig) -> Result<Connection> {
+        let pool = create_connection_pool(config)?;
+        let conn = pool.get_connection()?;
+        conn.execute_setup_queries()?;
+        Ok(conn)
+    }
+
+    pub fn shutdown_database_connection(conn: Connection) -> Result<()> {
+        conn.flush_pending_writes()?;
+        conn.close_gracefully()?;
+        Ok(())
+    }

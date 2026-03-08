@@ -1,0 +1,13 @@
+<FILE_CHANGES>
+
+<FILE_PATCH file_path="original.txt">
+@@
+ initialize_database_connection(config: &DatabaseConfig) -> Result<Connection> {
+-        let pool = create_connection_pool(config)?;
+-        let conn = pool.get_connection()?;
++        let pool = create_async_connection_pool(config).await?;
++        let conn = pool.get_async_connection().await?;
+         conn.execute_setup_queries()?;
+</FILE_PATCH>
+
+</FILE_CHANGES>

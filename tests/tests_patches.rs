@@ -182,6 +182,29 @@ fn test_patches_test_13() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_14() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-14-removal-suffix", false)?;
+
+	// -- Check
+	assert_contains!(content, "create_async_connection_pool");
+	assert_contains!(content, "get_async_connection");
+	// Verify the old lines are removed
+	assert!(
+		!content.contains("create_connection_pool"),
+		"Old pool creation should have been removed"
+	);
+	assert!(
+		!content.contains("pool.get_connection"),
+		"Old get_connection should have been removed"
+	);
+	// Verify the rest of the file is intact
+	assert_contains!(content, "shutdown_database_connection");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
