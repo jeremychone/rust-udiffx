@@ -148,6 +148,10 @@ struct CandidateMatch {
 
 	/// Number of context/removal lines that matched without needing normalization or suffix.
 	exact_ws_count: usize,
+
+	/// Whether all non-blank matched lines have a uniform leading-whitespace delta.
+	/// Used as a scoring boost at the Resilient tier.
+	uniform_indent: bool,
 }
 
 /// Checks whether one trimmed line is a suffix of the other.
@@ -182,9 +186,11 @@ fn score_candidate(candidate: &CandidateMatch, search_from: usize) -> (usize, is
 		true => candidate.idx - search_from,
 		false => search_from - candidate.idx,
 	};
-	// Primary: exact whitespace count (higher is better)
-	// Secondary: negative distance (closer is better, so negate)
-	(candidate.exact_ws_count, -(distance as isize))
+	// Primary: exact whitespace count (higher is better).
+	// Secondary: uniform indent bonus (1 if uniform, 0 otherwise).
+	// Tertiary: negative distance (closer is better, so negate).
+	let uniform_bonus: usize = if candidate.uniform_indent { 1 } else { 0 };
+	(candidate.exact_ws_count, uniform_bonus as isize * 1000 - distance as isize)
 }
 
 /// Checks whether an original line matches a patch line at the given tier.
@@ -244,6 +250,39 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 					== p_l.trim_end_matches(|c: char| c.is_ascii_punctuation())
 		}
 	}
+}
+
+/// Returns the number of leading whitespace characters (spaces and tabs) in a line.
+fn leading_ws_len(line: &str) -> usize {
+	line.len() - line.trim_start_matches(|c: char| c == ' ' || c == '\t').len()
+}
+
+/// Checks whether all non-blank matched pairs have a uniform leading-whitespace delta.
+/// Returns `true` if the delta is the same for every pair (or if there are no non-blank pairs).
+fn has_uniform_indent_delta(orig_lines: &[&str], hunk_lines: &[&str], matched_orig_indices: &[(usize, usize)]) -> bool {
+	let mut delta: Option<isize> = None;
+
+	for &(hl_idx, orig_idx) in matched_orig_indices {
+		let p_line = if hunk_lines[hl_idx].len() > 1 {
+			&hunk_lines[hl_idx][1..]
+		} else {
+			""
+		};
+		// Skip blank lines; they carry no indentation signal.
+		if p_line.trim().is_empty() {
+			continue;
+		}
+		let orig_ws = leading_ws_len(orig_lines[orig_idx]) as isize;
+		let patch_ws = leading_ws_len(p_line) as isize;
+		let d = orig_ws - patch_ws;
+		match delta {
+			None => delta = Some(d),
+			Some(prev) if prev != d => return false,
+			_ => {}
+		}
+	}
+
+	true
 }
 
 /// Searches for candidate matches at a given tier, returning all found candidates.
@@ -360,6 +399,8 @@ fn search_candidates_for_tier(
 				}
 			}
 
+			let uniform_indent = has_uniform_indent_delta(orig_lines, hunk_lines, &current_matches);
+
 			candidates.push(CandidateMatch {
 				idx: i,
 				tier,
@@ -369,6 +410,7 @@ fn search_candidates_for_tier(
 				matched_orig_indices: current_matches,
 				skipped_blank_orig_indices: current_skipped_blanks_all,
 				exact_ws_count: current_exact_ws_count,
+				uniform_indent,
 			});
 		}
 	}
@@ -1015,6 +1057,134 @@ fn do_work() {
 			result.is_err(),
 			"Should fail when content differs beyond trailing punctuation"
 		);
+
+		Ok(())
+	}
+
+	/// Verifies that when two copies of a block exist at different indentation levels,
+	/// the one with a uniform indent delta matching the patch is preferred.
+	#[test]
+	fn test_patch_completer_complete_uniform_indent_preferred() -> Result<()> {
+		// -- Setup & Fixtures
+		// Block A (line 1-3): indented with 4 spaces.
+		// Block B (line 4-6): indented with 8 spaces.
+		// Patch context uses 8 spaces, matching Block B exactly at Strict.
+		// But if we pretend the patch uses 6 spaces (neither matches exactly),
+		// Block B is a uniform +2 delta while Block A is a uniform -2 delta.
+		// Both are uniform so proximity wins for block A. Let's instead test
+		// that a uniform indent block is preferred over a non-uniform one.
+		let original = "\
+    fn work() {
+        let a = 1;
+    }
+      fn work() {
+            let a = 1;
+      }
+";
+		// Patch context: no indentation. Block A (4-space indent) has uniform delta +4.
+		// Block B has non-uniform delta: "fn work()" is +6, "let a = 1;" is +12, closing is +6.
+		let patch = "@@\n fn work() {\n-    let a = 1;\n+    let a = 2;\n }\n";
+
+		// -- Exec
+		let (completed, tier) = complete(original, patch)?;
+
+		// -- Check
+		// Should prefer Block A (line 1) because its indent delta is uniform (+4 for all lines),
+		// while Block B's delta is non-uniform.
+		assert!(completed.contains("@@ -1,3 +1,3 @@"), "Should match block A at line 1");
+		assert!(completed.contains("+    let a = 2;"));
+		let tier = tier.ok_or("Should have a tier")?;
+		assert!(
+			tier >= MatchTier::Resilient,
+			"Expected at least Resilient tier for indentation mismatch"
+		);
+
+		Ok(())
+	}
+
+	/// Verifies that a uniformly re-indented block (all lines shifted by the same amount)
+	/// matches successfully at the Resilient tier.
+	#[test]
+	fn test_patch_completer_complete_uniform_indent_simple() -> Result<()> {
+		// -- Setup & Fixtures
+		// Original is indented with 4 spaces.
+		let original = "    fn hello() {\n        println!(\"hi\");\n    }\n";
+		// Patch context uses no indentation (uniform -4 delta).
+		let patch = "@@\n fn hello() {\n-    println!(\"hi\");\n+    println!(\"world\");\n }\n";
+
+		// -- Exec
+		let (completed, tier) = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("@@ -1,3 +1,3 @@"));
+		assert!(completed.contains("+    println!(\"world\");"));
+		let tier = tier.ok_or("Should have a tier")?;
+		assert!(
+			tier >= MatchTier::Resilient,
+			"Expected at least Resilient tier for uniform indent shift"
+		);
+
+		Ok(())
+	}
+
+	/// Verifies that when indent deltas are inconsistent across lines, the candidate
+	/// still matches (via existing trimmed comparison) but uniform_indent is false,
+	/// so it scores lower than a uniform-indent candidate.
+	#[test]
+	fn test_patch_completer_complete_non_uniform_indent_still_matches() -> Result<()> {
+		// -- Setup & Fixtures
+		// Original has inconsistent indentation.
+		let original = "    fn foo() {\n      let x = 1;\n  }\n";
+		// Patch context uses no indentation. Deltas: +4, +6, +2 (non-uniform).
+		let patch = "@@\n fn foo() {\n-  let x = 1;\n+  let x = 2;\n }\n";
+
+		// -- Exec
+		let (completed, tier) = complete(original, patch)?;
+
+		// -- Check
+		// Should still match (trimmed comparison works), just with lower score.
+		assert!(completed.contains("@@ -1,3 +1,3 @@"));
+		assert!(completed.contains("+  let x = 2;"));
+		let tier = tier.ok_or("Should have a tier")?;
+		assert!(
+			tier >= MatchTier::Resilient,
+			"Expected at least Resilient tier for trimmed match"
+		);
+
+		Ok(())
+	}
+
+	/// Verifies disambiguation: two identical-content blocks where one has uniform indent
+	/// delta relative to the patch and the other does not. The uniform one should win.
+	#[test]
+	fn test_patch_completer_complete_uniform_indent_disambiguation() -> Result<()> {
+		// -- Setup & Fixtures
+		// Block 1 (lines 1-3): non-uniform indent (2, 8, 2 spaces) relative to patch (0, 4, 0).
+		//   Deltas: +2, +4, +2 → non-uniform.
+		// Block 2 (lines 5-7): uniform indent (4, 8, 4 spaces) relative to patch (0, 4, 0).
+		//   Deltas: +4, +4, +4 → uniform.
+		// Filler line between to separate them.
+		let original = "  fn calc() {
+        let val = 10;
+  }
+other_stuff();
+    fn calc() {
+        let val = 10;
+    }
+";
+		// Patch context with no indentation → Block 1 non-uniform, Block 2 uniform.
+		let patch = "@@\n fn calc() {\n-    let val = 10;\n+    let val = 20;\n }\n";
+
+		// -- Exec
+		let (completed, _) = complete(original, patch)?;
+
+		// -- Check
+		// Should prefer Block 2 (line 5) because it has uniform indent delta.
+		assert!(
+			completed.contains("@@ -5,3 +5,3 @@"),
+			"Should match block 2 at line 5 due to uniform indent. Got: {completed}"
+		);
+		assert!(completed.contains("+    let val = 20;"));
 
 		Ok(())
 	}
