@@ -18,16 +18,19 @@ To balance accuracy with resilience, the patch completion engine employs a three
   - No trimming, normalization, or casing adjustments are performed.
   - This tier provides the highest confidence and is processed first to ensure well-formed patches are applied exactly as intended.
 
-- **Stage 2: Resilient** - Performs case-sensitive matching with the following normalization:
+- **Stage 2: Resilient** - Performs case-sensitive matching with the following normalizations:
   - **Trimming**: Leading and trailing whitespace is ignored.
   - **Whitespace Normalization**: Multiple consecutive spaces or tabs are collapsed into a single space.
   - **Markdown Heading Normalization**: Heading markers (e.g., `### `) and their leading/trailing whitespace are normalized to allow for variation in heading levels or spacing.
-  - **Suffix Matching**: If a context fragment is at least 10 characters long, it matches if it appears at the end of an original line. This accommodates long lines that the LLM may have truncated.
+  - **Suffix Matching**: If a context or removal fragment is at least 10 characters long, it matches if it appears at the end of an original line. This accommodates long lines that the LLM may have truncated. A comment-marker-prefix guard prevents non-comment lines from false-positive matching comment lines via suffix (e.g., `"do something"` will not match `"// do something"` via suffix).
+  - **Trailing Semicolon/Comma Tolerance**: Strips a single trailing `;` or `,` from both the original and patch lines and re-compares. This handles common LLM formatting differences in code (e.g., omitting or adding trailing punctuation) without requiring the Fuzzy tier. Only activates when at least one line has a trailing `,` or `;` that differs.
+  - **Comment-Only Line Tolerance**: When both the original and patch lines are comment-only (starting with `//`, `#` excluding `#!`/`##`, or `<!-- -->`), the engine strips the comment marker and compares the remaining content with normalized whitespace. This handles minor wording or spacing differences in comments. If only one line is a comment, this check is skipped entirely to prevent false positives.
 
 - **Stage 3: Fuzzy** - Performs all normalizations from the Resilient tier and adds:
   - **Case-Insensitivity**: All comparisons are performed on lowercased versions of the lines.
   - **Inline Formatting Resilience**: Strips inline backticks (`` ` ``) from both the original and patch lines to resolve discrepancies in Markdown code formatting.
   - **Trailing Punctuation Resilience**: Ignores trailing ASCII punctuation (like periods or commas) that LLMs often add or omit inconsistently at the end of sentences.
+  - **Numeric Literal Tolerance**: Strips underscore separators (`_`) from numeric literals. This handles reformatting like `1_000` vs `1000` or `0xFF_FF` vs `0xFFFF`. Only underscores immediately preceded and followed by hex digits are stripped.
   - **Whitespace-Stripped Last Resort**: As a final fallback, strips all whitespace from both lines and compares the remaining characters (minimum 4 non-whitespace characters required). This handles cases where the LLM reformats internal whitespace in string literals or similar content without introducing false positives on very short lines.
 
 ### Execution Flow
@@ -48,6 +51,10 @@ Note: For Resilient and Fuzzy tiers, a proximity limit is enforced to prevent ex
 
 Within the Resilient and Fuzzy tiers, candidates that have more "exact" matches (where the line matched without needing normalization) are scored higher. This ensures that even in lenient tiers, the most visually similar block is preferred.
 
+### Uniform Indentation Delta
+
+When context/removal lines match at the Resilient tier via trimmed comparison, the engine computes the leading whitespace delta (difference in leading space count between original and patch lines) for each matched non-blank line pair. If the delta is the same for every pair, the candidate receives a scoring boost (`uniform_indent = true`). This helps disambiguate when duplicate code blocks exist at different indentation levels; the block with a consistent re-indent is preferred over one with irregular indentation differences.
+
 ### Adjacent Hunk Context Disambiguation
 
 When a patch contains multiple hunks, adjacent hunk context is used to disambiguate identical code blocks. For each candidate match:
@@ -56,6 +63,15 @@ When a patch contains multiple hunks, adjacent hunk context is used to disambigu
 - **Next hint**: The first context/removal line of the next hunk is compared against the original line immediately after the candidate's matched region. A match indicates the candidate is followed by content that the next hunk expects.
 
 Each matching hint adds a substantial scoring bonus (weighted higher than uniform indent and proximity), so candidates with surrounding context confirmation are strongly preferred over those without.
+
+### Scoring Priority Order
+
+The scoring factors are evaluated in the following priority order (highest to lowest):
+
+1. **Exact whitespace count** (primary, higher is better)
+2. **Adjacent hint matches** (0-2, each worth 10,000 points)
+3. **Uniform indent bonus** (worth 1,000 points if uniform)
+4. **Proximity** (negative distance from expected position, closer is better)
 
 ## Structural Resilience
 
@@ -69,7 +85,7 @@ To ensure high reliability, the engine performs a cleanup step on each hunk befo
 
 ### Suffix Matching
 
-If a context line in a patch is a suffix of an original line (minimum 10 characters), it is considered a match. This allows the LLM to provide only the trailing part of a long line as context.
+If a context or removal line in a patch is a suffix of an original line (minimum 10 characters), it is considered a match. This allows the LLM to provide only the trailing part of a long line as context. A guard against comment marker prefixes prevents false positives where the non-matching prefix is a comment marker (e.g., `//` or `#`).
 
 ### Blank Line Alignment
 
@@ -82,6 +98,8 @@ LLMs often insert "cosmetic" blank lines in patches for readability, or converse
 ### EOF Overhang
 
 If the context lines in a hunk extend beyond the end of the file, they are treated as "overhang" and dropped, provided they are context lines (` `) and not removal lines (`-`). This allows patches to include trailing context that the LLM incorrectly assumed existed at the end of a file.
+
+Validation rules prevent overhang abuse: at least 2 significant (non-blank) in-file matches are required, and in-file matches must outnumber overhang lines.
 
 ### Append-Only Hunks and Blank-Line Overlap
 
@@ -96,6 +114,10 @@ To avoid accidental duplication of trailing blank lines during append:
 
 This behavior preserves intended spacing while preventing repeated blank-line growth at EOF when LLM output includes cosmetic empty lines around appended content.
 
+### Empty File Bootstrapping
+
+When the original content is empty (or contains only blank lines) and a `FILE_PATCH` hunk contains context or removal lines, the engine auto-converts all context and removal lines into addition lines. This allows a `FILE_PATCH` against a non-existent or empty file to succeed rather than failing to find context. Pure addition-only hunks against empty files continue to use the existing append logic.
+
 ### Adjacent Hunk Context
 
 When multiple hunks are present in a patch, the engine collects all hunk bodies in a first pass, then processes each hunk with knowledge of the adjacent hunks' context lines. This allows the scoring system to disambiguate identical code blocks by verifying that the surrounding file content matches what neighboring hunks expect. See the "Adjacent Hunk Context Disambiguation" section under Match Resolution and Scoring for details.
@@ -104,3 +126,4 @@ When multiple hunks are present in a patch, the engine collects all hunk bodies 
 
 - **Early Exit**: The tiered approach ensures that well-formed, strict patches are processed quickly without ever triggering the more expensive normalization or lowercasing logic of the Resilient and Fuzzy tiers.
 - **Search Window**: While the search is greedy, it prioritizes the area immediately following the last successful hunk.
+- **Two-Pass Architecture**: The first pass to collect raw hunks is lightweight (no matching), and the second pass benefits from adjacent hunk knowledge for better disambiguation without additional file scans.

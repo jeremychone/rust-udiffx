@@ -48,15 +48,70 @@ When patching an empty file (or a file that doesn't exist yet), the code falls b
 
 ### Priority Ranking
 
-| #   | Improvement                    | Impact  | Complexity | Final Priority (10 highest) | Suggested Priority | Tier(s)             |
-| --- | ------------------------------ | ------- | ---------- | --------------------------- | ------------------ | ------------------- |
-| 5   | Consecutive Hunk Recovery      | High    | Medium     | 0                           | High               | All (orchestration) |
-| 3   | Partial Removal Line Suffix    | Medium  | Low        | 10                          | High               | Resilient, Fuzzy    |
-| 1   | Shifted Indentation            | Medium  | Medium     | 9                           | Medium             | Resilient           |
-| 6   | Duplicate Block Disambiguation | Medium  | Medium     | 3                           | Medium             | All (scoring)       |
-| 10  | Empty File Bootstrapping       | Low-Med | Low        | 8                           | Medium             | All (pre-matching)  |
-| 4   | Comment-Only Tolerance         | Medium  | High       | 4                           | Low                | Resilient           |
-| 7   | Trailing Semicolon/Comma       | Low     | Low        | 9                           | Low                | Resilient           |
-| 2   | Line Reordering                | Low     | High       | 0                           | Low                | Resilient           |
-| 8   | Numeric Literal Tolerance      | Low     | Low        | 7                           | Low                | Fuzzy               |
-| 9   | Multi-Line String Handling     | Low     | High       | 6                           | Low                | Resilient, Fuzzy    |
+| #   | Improvement                    | Impact  | Complexity | Final Priority (10 highest) | Suggested Priority | Tier(s)             | Status       |
+| --- | ------------------------------ | ------- | ---------- | --------------------------- | ------------------ | ------------------- | ------------ |
+| 5   | Consecutive Hunk Recovery      | High    | Medium     | 0                           | High               | All (orchestration) | Not started  |
+| 3   | Partial Removal Line Suffix    | Medium  | Low        | 10                          | High               | Resilient, Fuzzy    | **Done**     |
+| 1   | Shifted Indentation            | Medium  | Medium     | 9                           | Medium             | Resilient           | **Done**     |
+| 6   | Duplicate Block Disambiguation | Medium  | Medium     | 3                           | Medium             | All (scoring)       | **Done**     |
+| 10  | Empty File Bootstrapping       | Low-Med | Low        | 8                           | Medium             | All (pre-matching)  | **Done**     |
+| 4   | Comment-Only Tolerance         | Medium  | High       | 4                           | Low                | Resilient           | **Done**     |
+| 7   | Trailing Semicolon/Comma       | Low     | Low        | 9                           | Low                | Resilient           | **Done**     |
+| 2   | Line Reordering                | Low     | High       | 0                           | Low                | Resilient           | Not started  |
+| 8   | Numeric Literal Tolerance      | Low     | Low        | 7                           | Low                | Fuzzy               | **Done**     |
+| 9   | Multi-Line String Handling     | Low     | High       | 6                           | Low                | Resilient, Fuzzy    | **Done**     |
+
+## Implementation Summary (2026-03-07)
+
+All items except #2 (Line Reordering) and #5 (Consecutive Hunk Recovery) have been implemented. Here is a summary of what was done:
+
+### #3 - Partial Removal Line Suffix Matching
+
+- Verified that the existing `line_matches` function (which covers both context and removal lines) already had suffix matching at the Resilient and Fuzzy tiers.
+- Added explicit test coverage: `test_patch_completer_complete_removal_suffix_match` and `test_patch_completer_complete_removal_short_no_suffix_match`.
+- Added integration test in `tests/data/test-patches/test-14-removal-suffix/`.
+
+### #7 - Trailing Semicolon/Comma Tolerance
+
+- Added a targeted check in `line_matches` at the Resilient tier: strips trailing `,` or `;` from both lines and re-compares (trimmed and normalized whitespace).
+- Only activates when at least one line actually has a trailing `,` or `;` that differs, preventing false positives.
+
+### #1 - Shifted Indentation Heuristic
+
+- Added `leading_ws_len` and `has_uniform_indent_delta` helpers.
+- Extended `CandidateMatch` with `uniform_indent: bool`.
+- Updated `score_candidate` to use `uniform_bonus` (weighted between exact_ws_count and proximity).
+- This allows disambiguation when duplicate code blocks exist at different indentation levels.
+
+### #10 - Empty File Bootstrapping
+
+- In `compute_hunk_bounds`, added early detection for empty/blank-only originals.
+- When detected, all context/removal lines in the hunk are auto-converted to additions.
+- Pure addition-only hunks continue to use existing append logic.
+
+### #8 - Numeric Literal Tolerance
+
+- Added `strip_numeric_underscores` helper that removes `_` between hex digits.
+- Added as a Fuzzy-tier fallback in `line_matches`.
+
+### #9 - Multi-Line String Handling
+
+- Added `strip_all_ws` helper and a last-resort comparison in the Fuzzy tier.
+- Strips all whitespace and compares remaining characters (minimum 4 non-whitespace characters to avoid false positives on short lines).
+
+### #6 - Duplicate Block Disambiguation via Adjacent Hunk Context
+
+- Refactored `complete()` to a two-pass approach: first pass collects all raw hunk bodies, second pass processes each hunk with knowledge of adjacent hunks.
+- Added `AdjacentHints` struct, `build_adjacent_hints`, `hint_line_matches`, and `compute_adjacent_hint_matches`.
+- Adjacent hint matches contribute a large scoring bonus (10,000 per match), strongly preferring candidates with surrounding context confirmation.
+
+### #4 - Comment-Only Line Tolerance
+
+- Added `strip_comment_marker` helper recognizing `//`, `#` (excluding `#!`/`##`), and `<!-- -->`.
+- In `line_matches` at the Resilient tier, if both lines are comment-only, strip the marker and compare with `normalize_ws`.
+- Also added `is_comment_marker_prefix` to the suffix matcher to reject false positives where the non-matching prefix is a comment marker.
+
+### Remaining Items
+
+- **#5 - Consecutive Hunk Recovery**: Not implemented. Would require a "best-effort" mode that applies successful hunks and reports failures per-hunk rather than aborting. Considered lower priority since the adjacent hunk disambiguation (#6) already reduces multi-hunk failures.
+- **#2 - Line Reordering**: Not implemented. High complexity with risk of false positives; considered low priority.
