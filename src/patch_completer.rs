@@ -208,6 +208,17 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 					&& normalize_ws(strip_markdown_heading(orig_trimmed))
 						== normalize_ws(strip_markdown_heading(p_trimmed)))
 				|| suffix_match(orig_trimmed, p_trimmed, false)
+				|| {
+					// Trailing semicolon/comma tolerance: strip a single trailing `;` or `,`
+					// from both lines and re-compare. This handles common LLM formatting
+					// differences in code without going fully fuzzy.
+					let o_stripped = orig_trimmed.trim_end_matches([',', ';']);
+					let p_stripped = p_trimmed.trim_end_matches([',', ';']);
+					!o_stripped.is_empty()
+						&& !p_stripped.is_empty()
+						&& (o_stripped != orig_trimmed || p_stripped != p_trimmed)
+						&& (o_stripped == p_stripped || normalize_ws(o_stripped) == normalize_ws(p_stripped))
+				}
 		}
 		MatchTier::Fuzzy => {
 			let o_t = orig_line.trim();
@@ -885,7 +896,10 @@ fn do_work() {
 		assert!(completed.contains("@@ -1,"));
 		// Tier should be Resilient (not Strict, since suffix matching is needed)
 		let tier = tier.ok_or("Should have a tier")?;
-		assert!(tier >= MatchTier::Resilient, "Expected at least Resilient tier for suffix removal match");
+		assert!(
+			tier >= MatchTier::Resilient,
+			"Expected at least Resilient tier for suffix removal match"
+		);
 
 		Ok(())
 	}
@@ -908,6 +922,99 @@ fn do_work() {
 		// Should match starting at line 2 ("the word pool"), not line 1
 		assert!(completed.contains("@@ -2,2 +2,2 @@"));
 		assert!(completed.contains("+replaced line"));
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_patch_completer_complete_resilient_trailing_semicolon_orig_has() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "let x = 1;\nlet y = 2;\n";
+		// Patch context omits the trailing semicolon on "let x = 1"
+		let patch = "@@\n let x = 1\n-let y = 2;\n+let y = 42;\n";
+
+		// -- Exec
+		let (completed, tier) = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("+let y = 42;"));
+		assert!(completed.contains("@@ -1,2 +1,2 @@"));
+		let tier = tier.ok_or("Should have a tier")?;
+		assert!(
+			tier >= MatchTier::Resilient,
+			"Expected at least Resilient tier for trailing semicolon tolerance"
+		);
+		// Should NOT need Fuzzy
+		assert!(tier <= MatchTier::Resilient, "Should match at Resilient, not Fuzzy");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_patch_completer_complete_resilient_trailing_comma_orig_has() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "    field_one: String,\n    field_two: i32,\n}\n";
+		// Patch context omits the trailing comma on "field_one: String"
+		let patch = "@@\n field_one: String\n-    field_two: i32,\n+    field_two: i64,\n }\n";
+
+		// -- Exec
+		let (completed, tier) = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("+    field_two: i64,"));
+		assert!(completed.contains("@@ -1,3 +1,3 @@"));
+		let tier = tier.ok_or("Should have a tier")?;
+		assert!(
+			tier >= MatchTier::Resilient,
+			"Expected at least Resilient tier for trailing comma tolerance"
+		);
+		assert!(tier <= MatchTier::Resilient, "Should match at Resilient, not Fuzzy");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_patch_completer_complete_resilient_trailing_semi_patch_adds() -> Result<()> {
+		// -- Setup & Fixtures
+		let original = "let x = 1\nlet y = 2\n";
+		// Patch context adds a trailing semicolon that the original doesn't have
+		let patch = "@@\n let x = 1;\n-let y = 2\n+let y = 42\n";
+
+		// -- Exec
+		let (completed, tier) = complete(original, patch)?;
+
+		// -- Check
+		assert!(completed.contains("+let y = 42"));
+		assert!(completed.contains("@@ -1,2 +1,2 @@"));
+		let tier = tier.ok_or("Should have a tier")?;
+		assert!(
+			tier >= MatchTier::Resilient,
+			"Expected at least Resilient tier when patch adds trailing semicolon"
+		);
+		assert!(tier <= MatchTier::Resilient, "Should match at Resilient, not Fuzzy");
+
+		Ok(())
+	}
+
+	/// Verifies that trailing semicolon/comma tolerance does NOT cause a false match
+	/// when the line content itself differs (e.g., "let z = 1" vs "let x = 1;").
+	#[test]
+	fn test_patch_completer_complete_resilient_trailing_semi_no_match_different_content() -> Result<()> {
+		// -- Setup & Fixtures
+		// Lines differ in more than just trailing comma/semicolon
+		let original = "let x = 1;\nlet y = 2;\n";
+		let patch = "@@\n let z = 1\n-let y = 2;\n+let y = 42;\n";
+
+		// -- Exec
+		let result = complete(original, patch);
+
+		// -- Check
+		// "let z = 1" should not match "let x = 1;" because content differs (z vs x),
+		// so the patch should fail to find a match.
+		assert!(
+			result.is_err(),
+			"Should fail when content differs beyond trailing punctuation"
+		);
 
 		Ok(())
 	}
