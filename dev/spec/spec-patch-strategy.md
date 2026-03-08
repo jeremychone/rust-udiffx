@@ -28,6 +28,7 @@ To balance accuracy with resilience, the patch completion engine employs a three
   - **Case-Insensitivity**: All comparisons are performed on lowercased versions of the lines.
   - **Inline Formatting Resilience**: Strips inline backticks (`` ` ``) from both the original and patch lines to resolve discrepancies in Markdown code formatting.
   - **Trailing Punctuation Resilience**: Ignores trailing ASCII punctuation (like periods or commas) that LLMs often add or omit inconsistently at the end of sentences.
+  - **Whitespace-Stripped Last Resort**: As a final fallback, strips all whitespace from both lines and compares the remaining characters (minimum 4 non-whitespace characters required). This handles cases where the LLM reformats internal whitespace in string literals or similar content without introducing false positives on very short lines.
 
 ### Execution Flow
 

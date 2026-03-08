@@ -155,6 +155,12 @@ fn strip_numeric_underscores(s: &str) -> String {
 	result
 }
 
+/// Strips all whitespace characters from a string.
+/// Used as a last-resort comparison in the Fuzzy tier for multi-line string resilience.
+fn strip_all_ws(s: &str) -> String {
+	s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
 /// Represents a candidate match found during hunk position search.
 struct CandidateMatch {
 	idx: usize,
@@ -273,6 +279,12 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 				// Also check if they match after stripping numeric literal underscores
 				|| normalize_ws(&strip_numeric_underscores(&o_l))
 					== normalize_ws(&strip_numeric_underscores(&p_l))
+				// Last resort: strip ALL whitespace for multi-line string resilience.
+				// This handles cases where the LLM reformats internal whitespace in
+				// string literals or similar content.
+				|| (!o_l.is_empty()
+					&& strip_all_ws(&o_l) == strip_all_ws(&p_l)
+					&& strip_all_ws(&o_l).len() >= 4)
 		}
 	}
 }

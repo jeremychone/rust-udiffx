@@ -18,6 +18,95 @@ fn test_patch_completer_complete_simple() -> Result<()> {
 	Ok(())
 }
 
+/// Verifies that lines with reformatted internal whitespace in string-like content
+/// match at the Fuzzy tier via the strip-all-whitespace last resort.
+#[test]
+fn test_patch_completer_complete_fuzzy_multiline_string_ws_collapsed() -> Result<()> {
+	// -- Setup & Fixtures
+	// Original has a string with specific internal whitespace
+	let original = "let msg = \"hello   world   foo\";\nlet x = 1;\n";
+	// Patch context collapses the internal whitespace differently
+	let patch = "@@\n let msg = \"hello world foo\";\n-let x = 1;\n+let x = 2;\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+let x = 2;"));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert!(
+		tier >= MatchTier::Resilient,
+		"Expected at least Resilient tier for whitespace-collapsed string match, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that the strip-all-whitespace last resort does NOT cause false positives
+/// when the non-whitespace content is actually different.
+#[test]
+fn test_patch_completer_complete_fuzzy_multiline_string_no_false_match() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "let msg = \"hello world\";\nlet x = 1;\n";
+	// Patch context has different non-whitespace content
+	let patch = "@@\n let msg = \"goodbye world\";\n-let x = 1;\n+let x = 2;\n";
+
+	// -- Exec
+	let result = complete(original, patch);
+
+	// -- Check
+	assert!(result.is_err(), "Should fail when non-whitespace content differs");
+
+	Ok(())
+}
+
+/// Verifies that normal code with string delimiters in it is not affected
+/// by the multi-line string resilience. Standard matching tiers should handle it.
+#[test]
+fn test_patch_completer_complete_fuzzy_string_delimiters_normal_code() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "let s = r#\"exact content\"#;\nlet y = 5;\n";
+	// Patch context matches exactly (Strict tier)
+	let patch = "@@\n let s = r#\"exact content\"#;\n-let y = 5;\n+let y = 10;\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+let y = 10;"));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(tier, MatchTier::Strict, "Expected Strict tier for exact match with string delimiters");
+
+	Ok(())
+}
+
+/// Verifies that the strip-all-whitespace check requires a minimum length (4 chars)
+/// to avoid false matches on very short lines.
+#[test]
+fn test_patch_completer_complete_fuzzy_strip_ws_min_length() -> Result<()> {
+	// -- Setup & Fixtures
+	// "a b" stripped is "ab" (2 chars, below minimum of 4)
+	let original = "a b\nreal line\n";
+	// Patch context "a  b" stripped is also "ab", but too short to use strip-all-ws
+	let patch = "@@\n a  b\n-real line\n+replaced\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	// Should still match via normalize_ws at Resilient tier (both normalize to "a b")
+	assert!(completed.contains("+replaced"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert!(
+		tier <= MatchTier::Resilient,
+		"Expected Resilient or better tier for short whitespace-normalized match"
+	);
+
+	Ok(())
+}
+
 /// Verifies that numeric literals with underscore separators match at the Fuzzy tier.
 /// E.g., original has `1_000` and patch has `1000`.
 #[test]
