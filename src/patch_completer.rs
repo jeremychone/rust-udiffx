@@ -38,6 +38,22 @@ fn normalize_ws(s: &str) -> String {
 	s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+fn is_wrapper_meta_line(trimmed: &str) -> bool {
+	trimmed == "*** Begin Patch" || trimmed == "*** End Patch" || trimmed.starts_with("*** Update File:")
+}
+
+fn sanitize_wrapper_meta_lines(patch_raw: &str) -> String {
+	let mut out = String::new();
+	for line in patch_raw.lines() {
+		if is_wrapper_meta_line(line.trim()) {
+			continue;
+		}
+		out.push_str(line);
+		out.push('\n');
+	}
+	out
+}
+
 /// Completes a raw simplified patch (numberless `@@` hunks) into a fully valid unified diff
 /// that can be applied by `diffy`.
 ///
@@ -65,6 +81,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 	} else {
 		Cow::Borrowed(patch_raw)
 	};
+	let sanitized_patch_raw = sanitize_wrapper_meta_lines(&patch_raw);
 
 	let orig_lines: Vec<&str> = original_content.lines().collect();
 	let mut max_tier: Option<MatchTier> = None;
@@ -103,6 +120,41 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 			}
 		} else {
 			non_hunk_prefix.push(line);
+		}
+	}
+
+	// -- If strict parse produced no actionable hunks, retry parse with sanitized content
+	// for resilient/fuzzy recovery from wrapper/meta lines.
+	if raw_hunks.is_empty() {
+		non_hunk_prefix.clear();
+		let mut lines = sanitized_patch_raw.lines().peekable();
+		while let Some(line) = lines.next() {
+			let trimmed = line.trim();
+
+			if trimmed.starts_with("@@") {
+				let mut hunk_lines = Vec::new();
+				while let Some(next_line) = lines.peek() {
+					let next_trimmed = next_line.trim();
+					if next_trimmed.starts_with("@@") {
+						break;
+					}
+					hunk_lines.push(lines.next().unwrap());
+				}
+
+				while hunk_lines.last().is_some_and(|l| l.trim().is_empty()) {
+					hunk_lines.pop();
+				}
+
+				let has_add = hunk_lines.iter().any(|l| l.starts_with('+'));
+				let has_remove = hunk_lines.iter().any(|l| l.starts_with('-'));
+				let is_actionable = has_add || has_remove;
+
+				if is_actionable {
+					raw_hunks.push(hunk_lines);
+				}
+			} else {
+				non_hunk_prefix.push(line);
+			}
 		}
 	}
 

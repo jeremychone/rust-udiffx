@@ -1288,3 +1288,158 @@ fn test_patch_completer_complete_ignores_surround_only_hunk_at_end() -> Result<(
 
 	Ok(())
 }
+
+#[test]
+fn test_patch_completer_complete_with_wrapper_full_set() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "line 1\nline 2\nline 3\n";
+	let patch = "\
+*** Begin Patch
+*** Update File: src/sample.txt
+@@
+ line 2
+-line 3
++line 3 updated
+*** End Patch
+";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+line 3 updated"));
+	assert!(completed.contains("@@ -2,2 +2,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(
+		tier,
+		MatchTier::Strict,
+		"Expected Strict tier because wrapper lines are ignored during parsing and hunk lines match exactly, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+#[test]
+fn test_patch_completer_complete_with_wrapper_begin_end_only() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "alpha\nbeta\ngamma\n";
+	let patch = "\
+*** Begin Patch
+@@
+ beta
+-gamma
++gamma2
+*** End Patch
+";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+gamma2"));
+	assert!(completed.contains("@@ -2,2 +2,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(
+		tier,
+		MatchTier::Strict,
+		"Expected Strict tier because wrapper lines are ignored during parsing and hunk lines match exactly, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+#[test]
+fn test_patch_completer_complete_with_wrapper_and_blank_lines() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "a\nb\nc\n";
+	let patch = "
+
+*** Begin Patch
+
+*** Update File: src/any.txt
+@@
+ b
+-c
++c-updated
+
+*** End Patch
+
+";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+c-updated"));
+	assert!(completed.contains("@@ -2,2 +2,3 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(
+		tier,
+		MatchTier::Strict,
+		"Expected Strict tier because wrapper lines are ignored during parsing and hunk lines match exactly, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that wrapper-like lines in the original file are treated as normal
+/// file content and can be targeted by strict matching.
+#[test]
+fn test_patch_completer_complete_literal_wrapper_lines_in_original_strict() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "\
+prefix
+*** Begin Patch
+*** Update File: src/literal.txt
+value = old
+*** End Patch
+suffix
+";
+	let patch = "@@\n *** Begin Patch\n *** Update File: src/literal.txt\n-value = old\n+value = new\n *** End Patch\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+value = new"));
+	assert!(completed.contains("@@ -2,4 +2,4 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(
+		tier,
+		MatchTier::Strict,
+		"Expected Strict tier when wrapper-like lines are literal original content and patch matches exactly, got {tier:?}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that wrapper-like lines in the original file can still be used as context
+/// around edits, and unknown `*** ...` lines are preserved as regular content.
+#[test]
+fn test_patch_completer_complete_literal_wrapper_and_unknown_star_lines_in_original() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "\
+alpha
+*** Begin Patch
+*** Not A Wrapper: keep me
+beta = 1
+*** End Patch
+omega
+";
+	let patch = "@@\n *** Begin Patch\n *** Not A Wrapper: keep me\n-beta = 1\n+beta = 2\n *** End Patch\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+beta = 2"));
+	assert!(completed.contains("@@ -2,4 +2,4 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(
+		tier,
+		MatchTier::Strict,
+		"Expected Strict tier for literal wrapper/unknown star lines in original content, got {tier:?}"
+	);
+
+	Ok(())
+}
