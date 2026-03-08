@@ -136,6 +136,25 @@ fn strip_markdown_heading(s: &str) -> &str {
 /// This prevents very short strings (e.g., `"x"`) from false-positive matching.
 const SUFFIX_MATCH_MIN_LEN: usize = 10;
 
+/// Strips underscore separators from numeric literals in a string.
+/// Removes `_` characters that are immediately preceded and followed by a hex digit
+/// (0-9, a-f, A-F). This normalizes `1_000` to `1000` and `0xFF_FF` to `0xFFFF`.
+fn strip_numeric_underscores(s: &str) -> String {
+	let chars: Vec<char> = s.chars().collect();
+	let mut result = String::with_capacity(s.len());
+	for (i, &ch) in chars.iter().enumerate() {
+		if ch == '_' && i > 0 && i + 1 < chars.len() {
+			let prev = chars[i - 1];
+			let next = chars[i + 1];
+			if prev.is_ascii_hexdigit() && next.is_ascii_hexdigit() {
+				continue; // skip this underscore
+			}
+		}
+		result.push(ch);
+	}
+	result
+}
+
 /// Represents a candidate match found during hunk position search.
 struct CandidateMatch {
 	idx: usize,
@@ -251,6 +270,9 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 				// Also check if they match ignoring trailing punctuation (common LLM error)
 				|| o_l.trim_end_matches(|c: char| c.is_ascii_punctuation())
 					== p_l.trim_end_matches(|c: char| c.is_ascii_punctuation())
+				// Also check if they match after stripping numeric literal underscores
+				|| normalize_ws(&strip_numeric_underscores(&o_l))
+					== normalize_ws(&strip_numeric_underscores(&p_l))
 		}
 	}
 }

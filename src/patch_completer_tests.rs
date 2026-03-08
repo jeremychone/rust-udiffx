@@ -18,6 +18,66 @@ fn test_patch_completer_complete_simple() -> Result<()> {
 	Ok(())
 }
 
+/// Verifies that numeric literals with underscore separators match at the Fuzzy tier.
+/// E.g., original has `1_000` and patch has `1000`.
+#[test]
+fn test_patch_completer_complete_fuzzy_numeric_underscores_decimal() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "let x = 1_000;\nlet y = 2;\n";
+	// Patch context uses `1000` instead of `1_000`
+	let patch = "@@\n let x = 1000;\n-let y = 2;\n+let y = 42;\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+let y = 42;"));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(tier, MatchTier::Fuzzy, "Expected Fuzzy tier for numeric underscore tolerance");
+
+	Ok(())
+}
+
+/// Verifies that hex numeric literals with underscore separators match at the Fuzzy tier.
+/// E.g., original has `0xFF_FF` and patch has `0xFFFF`.
+#[test]
+fn test_patch_completer_complete_fuzzy_numeric_underscores_hex() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "let mask = 0xFF_FF;\nlet val = 0;\n";
+	// Patch context uses `0xFFFF` instead of `0xFF_FF`
+	let patch = "@@\n let mask = 0xFFFF;\n-let val = 0;\n+let val = 1;\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("+let val = 1;"));
+	assert!(completed.contains("@@ -1,2 +1,2 @@"));
+	let tier = tier.ok_or("Should have a tier")?;
+	assert_eq!(tier, MatchTier::Fuzzy, "Expected Fuzzy tier for hex numeric underscore tolerance");
+
+	Ok(())
+}
+
+/// Verifies that lines differing in more than just numeric separators do NOT match
+/// via the numeric underscore stripping alone.
+#[test]
+fn test_patch_completer_complete_fuzzy_numeric_underscores_no_false_match() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "let x = 1_000;\nlet y = 2;\n";
+	// Patch context uses a completely different value, not just a formatting difference
+	let patch = "@@\n let x = 2000;\n-let y = 2;\n+let y = 42;\n";
+
+	// -- Exec
+	let result = complete(original, patch);
+
+	// -- Check
+	assert!(result.is_err(), "Should fail when numeric content differs beyond just underscore separators");
+
+	Ok(())
+}
+
 #[test]
 fn test_patch_completer_complete_partial_suffix() -> Result<()> {
 	// -- Setup & Fixtures
