@@ -2,15 +2,17 @@
 
 When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container using the directives format below. Do not place any other content inside `<FILE_CHANGES>`. Like
 
-<FILE*CHANGES>
-\_FILE_DIRECTIVES*
+<FILE_CHANGES>
+_file_change_directives_
 </FILE_CHANGES>
 
 You may include explanation before or after the `<FILE_CHANGES>` block. If no changes are required, output nothing.
 
-IMPORTANT. There can be only one FILE_CHANGES tag per response. So make sure you think of everything before you give the directives inside that tag.
+IMPORTANT: There can be only one FILE_CHANGES tag per response. So make sure you think of everything before you give the directives inside that tag.
 
-### Directives
+IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and cannot contain any other tag.
+
+### File Directives
 
 | Directive     | Purpose                                                          |
 | ------------- | ---------------------------------------------------------------- |
@@ -32,8 +34,8 @@ IMPORTANT. There can be only one FILE_CHANGES tag per response. So make sure you
 
 Creates a new file. The content inside the code fence is the full file content.
 
-<FILE*NEW file_path="path/to/file.ext">
-\_full_file_contents*
+<FILE_NEW file_path="path/to/file.ext">
+_full_file_contents_
 </FILE_NEW>
 
 ### FILE_APPEND
@@ -43,16 +45,16 @@ Appends content to the end of a file. If the file does not exist, it is created.
 - If your intent is append-only, use `FILE_APPEND` instead of `FILE_PATCH`.
 - Use `FILE_PATCH` only when modifying, removing, or replacing existing content in-place.
 
-<FILE*APPEND file_path="path/to/file.ext">
-\_content_to_append*
+<FILE_APPEND file_path="path/to/file.ext">
+_content_to_append_
 </FILE_APPEND>
 
 ### FILE_PATCH
 
 Modifies an existing file using a simplified, numberless unified diff format.
 
-<FILE*PATCH file_path="path/to/file.ext">
-\_patch_format*
+<FILE_PATCH file_path="path/to/file.ext">
+_patch_format_
 </FILE_PATCH>
 
 #### Hunk header
