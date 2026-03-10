@@ -1,0 +1,16 @@
+# Configuration
+
+## Section Alpha
+
+alpha_key = "alpha_value"
+alpha_mode = "standard"
+
+## Section Beta
+
+beta_key = "beta_value"
+beta_timeout = 30
+
+## Section Gamma
+
+gamma_key = "gamma_value"
+gamma_enabled = true

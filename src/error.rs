@@ -71,6 +71,14 @@ pub struct PathAndCause {
 // region:    --- Custom
 
 impl Error {
+	pub fn custom(val: impl Into<String>) -> Self {
+		Self::Custom(val.into())
+	}
+
+	pub fn custom_from_err(err: impl std::error::Error) -> Self {
+		Self::Custom(err.to_string())
+	}
+
 	pub fn parse_missing_attribute(tag: impl Into<String>, attr: impl Into<String>) -> Self {
 		Self::ParseMissingAttribute {
 			tag: tag.into(),

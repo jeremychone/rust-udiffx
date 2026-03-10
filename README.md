@@ -159,6 +159,7 @@ fn main() -> Result<()> {
 
 - `FILE_NEW`: creates or overwrites a file. Parent directories are created.
 - `FILE_PATCH`: reads the target file, applies a unified diff, and writes the result back.
+  - When a patch contains multiple hunks, each hunk is applied independently. If some hunks fail, the successfully applied hunks are still written. The directive is considered successful if at least one hunk applies. Per-hunk failure details are available in `DirectiveStatus.error_hunks`.
 - `FILE_RENAME`: renames or moves `from_path` to `to_path`.
 - `FILE_DELETE`: removes a file or directory recursively.
 

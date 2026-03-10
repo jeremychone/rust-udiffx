@@ -1,8 +1,8 @@
 use crate::{
-	ApplyChangesStatus, DirectiveStatus, Error, FileChanges, FileDirective, MatchTier, Result, fs_guard,
+	ApplyChangesStatus, DirectiveStatus, Error, FileChanges, FileDirective, HunkError, MatchTier, Result, fs_guard,
 	patch_completer,
 };
-use diffy::{Patch, apply};
+use diffy::{Patch, apply as diffy_apply};
 use simple_fs::{SPath, ensure_file_dir, read_to_string, safer_trash_dir, safer_trash_file};
 use std::fs;
 
@@ -65,8 +65,10 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						String::new()
 					};
 
-					let (new_content, tier) = apply_patch(&file_path, &original_content, &patch_content.content)?;
+					let (new_content, tier, hunk_errors) =
+						apply_patch_incremental(&file_path, &original_content, &patch_content.content)?;
 					info.match_tier = tier;
+					info.error_hunks = hunk_errors;
 
 					if new_content == original_content && full_path.exists() {
 						return Err(Error::apply_no_changes(file_path));
@@ -176,11 +178,104 @@ pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<(
 	let patch_obj =
 		Patch::from_str(&completed_patch).map_err(|err| Error::diffy_parse_patch(file_path, err, &completed_patch))?;
 	let mut new_content =
-		apply(&original_fixed, &patch_obj).map_err(|err| Error::diffy_apply_patch(file_path, err, &completed_patch))?;
+		diffy_apply(&original_fixed, &patch_obj).map_err(|err| Error::diffy_apply_patch(file_path, err, &completed_patch))?;
 
 	if !CRLF_SAVE_TO_LDF && original_had_crlf {
 		new_content = new_content.replace('\n', "\r\n");
 	}
 
 	Ok((new_content, tier))
+}
+
+/// Applies a patch incrementally, hunk by hunk, allowing partial success.
+///
+/// Returns `(new_content, max_tier, hunk_errors)`.
+/// - If at least one hunk succeeds, returns the updated content with all successful hunks applied.
+/// - If all hunks fail, returns an error.
+/// - `hunk_errors` contains details for each hunk that failed.
+fn apply_patch_incremental(
+	file_path: &str,
+	original: &str,
+	patch_raw: &str,
+) -> Result<(String, Option<MatchTier>, Vec<HunkError>)> {
+	let original_had_crlf = original.contains("\r\n");
+
+	let original_lf = if original_had_crlf {
+		original.replace("\r\n", "\n")
+	} else {
+		original.to_string()
+	};
+	let patch_lf = if patch_raw.contains("\r\n") {
+		patch_raw.replace("\r\n", "\n")
+	} else {
+		patch_raw.to_string()
+	};
+
+	// Ensure original has a trailing newline (POSIX compliance)
+	let mut working_content = original_lf;
+	if !working_content.is_empty() && !working_content.ends_with('\n') {
+		working_content.push('\n');
+	}
+
+	let raw_hunks = patch_completer::split_raw_hunks(&patch_lf);
+
+	// If only one hunk, use the all-or-nothing path for simplicity
+	if raw_hunks.len() <= 1 {
+		let (new_content, tier) = apply_patch(file_path, original, patch_raw)?;
+		return Ok((new_content, tier, Vec::new()));
+	}
+
+	let mut max_tier: Option<MatchTier> = None;
+	let mut hunk_errors: Vec<HunkError> = Vec::new();
+	let mut applied_count: usize = 0;
+
+	for raw_hunk in &raw_hunks {
+		let result: std::result::Result<(String, Option<MatchTier>), String> = (|| {
+			let (completed_patch, tier) = patch_completer::complete(&working_content, raw_hunk)
+				.map_err(|e| e.to_string())?;
+
+			if completed_patch.is_empty() {
+				return Err("Hunk produced empty completed patch".to_string());
+			}
+
+			let patch_obj = Patch::from_str(&completed_patch)
+				.map_err(|e| format!("diffy parse error: {e}"))?;
+
+			let new_content = diffy_apply(&working_content, &patch_obj)
+				.map_err(|e| format!("diffy apply error: {e}"))?;
+
+			Ok((new_content, tier))
+		})();
+
+		match result {
+			Ok((new_content, tier)) => {
+				working_content = new_content;
+				applied_count += 1;
+				if let Some(t) = tier {
+					max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
+				}
+			}
+			Err(cause) => {
+				hunk_errors.push(HunkError {
+					hunk_body: raw_hunk.clone(),
+					cause,
+				});
+			}
+		}
+	}
+
+	if applied_count == 0 {
+		let summary = format!(
+			"All {} hunks failed to apply for '{}'",
+			raw_hunks.len(),
+			file_path
+		);
+		return Err(Error::custom(summary));
+	}
+
+	if !CRLF_SAVE_TO_LDF && original_had_crlf {
+		working_content = working_content.replace('\n', "\r\n");
+	}
+
+	Ok((working_content, max_tier, hunk_errors))
 }

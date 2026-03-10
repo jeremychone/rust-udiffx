@@ -19,6 +19,7 @@ pub use file_changes::*;
 pub use file_directives::*;
 pub use files_context::load_files_context;
 pub use patch_completer::MatchTier;
+pub use patch_completer::split_raw_hunks;
 
 // -- feature prompt
 #[cfg(feature = "prompt")]
@@ -30,6 +31,7 @@ pub use prompt::prompt_file_changes;
 pub mod for_test {
 	pub use crate::applier::apply_patch;
 	pub use crate::patch_completer::complete;
+	pub use crate::patch_completer::split_raw_hunks;
 }
 
 // endregion: --- Modules

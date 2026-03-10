@@ -1,0 +1,24 @@
+<TEST_FILE_CHANGES>
+
+<TEST_FILE_PATCH file_path="some/file.txt">
+@@
+ ## Section Alpha
+ 
+-alpha_key = "alpha_value"
++alpha_key = "alpha_updated"
+ alpha_mode = "standard"
+@@
+ ## Section WRONG CONTEXT
+ 
+-this_does_not_exist = "nowhere"
++replaced_value = "something"
+ also_not_here = "nope"
+@@
+ ## Section Gamma
+ 
+-gamma_key = "gamma_value"
++gamma_key = "gamma_updated"
+ gamma_enabled = true
+</TEST_FILE_PATCH>
+
+</TEST_FILE_CHANGES>

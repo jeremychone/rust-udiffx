@@ -1,6 +1,58 @@
 use crate::{Error, Result};
 use std::borrow::Cow;
 
+// region:    --- Public Helpers
+
+/// Splits a raw simplified patch (numberless `@@` hunks) into individual hunk strings.
+///
+/// Each returned `String` contains a single `@@` header followed by its body lines.
+/// The splitting reuses the same parsing logic as `complete`: CRLF normalization,
+/// sanitize wrapper meta lines, trailing whitespace stripping, and the actionable
+/// check (only hunks with at least one `+` or `-` line are included).
+pub fn split_raw_hunks(patch_raw: &str) -> Vec<String> {
+	let patch_raw: Cow<'_, str> = if patch_raw.contains("\r\n") {
+		Cow::Owned(patch_raw.replace("\r\n", "\n"))
+	} else {
+		Cow::Borrowed(patch_raw)
+	};
+
+	let raw_hunks = collect_raw_hunks(&patch_raw);
+
+	if !raw_hunks.is_empty() {
+		// Reconstruct each hunk as a self-contained patch string with its @@ header
+		return raw_hunks
+			.into_iter()
+			.map(|lines| {
+				let mut hunk_str = String::from("@@\n");
+				for line in lines {
+					hunk_str.push_str(line);
+					hunk_str.push('\n');
+				}
+				hunk_str
+			})
+			.collect();
+	}
+
+	// If strict parse produced no actionable hunks, retry with sanitized content
+	let sanitized = sanitize_wrapper_meta_lines(&patch_raw);
+	let raw_hunks = collect_raw_hunks(&sanitized);
+
+	// Reconstruct each hunk as a self-contained patch string with its @@ header
+	raw_hunks
+		.into_iter()
+		.map(|lines| {
+			let mut hunk_str = String::from("@@\n");
+			for line in lines {
+				hunk_str.push_str(line);
+				hunk_str.push('\n');
+			}
+			hunk_str
+		})
+		.collect()
+}
+
+// endregion: --- Public Helpers
+
 // region:    --- Types
 
 /// Maximum lines to search away from the expected position for lenient (Resilient/Fuzzy) matches.
@@ -32,6 +84,50 @@ struct AdjacentHints<'a> {
 }
 
 // endregion: --- Types
+
+// region:    --- Internal Parsing
+
+/// Collects raw hunk bodies from patch text, returning each hunk as a `Vec<&str>` of body lines.
+///
+/// Shared by both `split_raw_hunks` and `complete` to avoid duplicating the parsing logic.
+fn collect_raw_hunks<'a>(patch_text: &'a str) -> Vec<Vec<&'a str>> {
+	let mut raw_hunks: Vec<Vec<&str>> = Vec::new();
+	let mut lines = patch_text.lines().peekable();
+
+	while let Some(line) = lines.next() {
+		let trimmed = line.trim();
+
+		if trimmed.starts_with("@@") {
+			let mut hunk_lines = Vec::new();
+			while let Some(next_line) = lines.peek() {
+				let next_trimmed = next_line.trim();
+				if next_trimmed.starts_with("@@") {
+					break;
+				}
+				hunk_lines.push(lines.next().unwrap());
+			}
+
+			// Strip trailing empty lines that lack a valid diff prefix.
+			// These are artefacts of the raw patch text (e.g. a trailing newline)
+			// and would otherwise be mis-counted as context lines.
+			while hunk_lines.last().is_some_and(|l| l.trim().is_empty()) {
+				hunk_lines.pop();
+			}
+
+			let has_add = hunk_lines.iter().any(|l| l.starts_with('+'));
+			let has_remove = hunk_lines.iter().any(|l| l.starts_with('-'));
+			let is_actionable = has_add || has_remove;
+
+			if is_actionable {
+				raw_hunks.push(hunk_lines);
+			}
+		}
+	}
+
+	raw_hunks
+}
+
+// endregion: --- Internal Parsing
 
 /// Collapses runs of whitespace into a single space for normalized comparison.
 fn normalize_ws(s: &str) -> String {
@@ -86,39 +182,17 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 	let orig_lines: Vec<&str> = original_content.lines().collect();
 	let mut max_tier: Option<MatchTier> = None;
 
-	// -- First pass: collect all hunk bodies as raw line slices.
-	let mut raw_hunks: Vec<Vec<&str>> = Vec::new();
+	// -- First pass: collect all hunk bodies as raw line slices using shared helper.
+	let mut raw_hunks = collect_raw_hunks(&patch_raw);
 	let mut non_hunk_prefix: Vec<&str> = Vec::new();
 
-	let mut lines = patch_raw.lines().peekable();
-	while let Some(line) = lines.next() {
+	// Collect non-hunk prefix lines (e.g. file headers) from before first @@
+	for line in patch_raw.lines() {
 		let trimmed = line.trim();
-
 		if trimmed.starts_with("@@") {
-			let mut hunk_lines = Vec::new();
-			while let Some(next_line) = lines.peek() {
-				let next_trimmed = next_line.trim();
-				if next_trimmed.starts_with("@@") {
-					break;
-				}
-				hunk_lines.push(lines.next().unwrap());
-			}
-
-			// Strip trailing empty lines that lack a valid diff prefix.
-			// These are artefacts of the raw patch text (e.g. a trailing newline)
-			// and would otherwise be mis-counted as context lines.
-			while hunk_lines.last().is_some_and(|l| l.trim().is_empty()) {
-				hunk_lines.pop();
-			}
-
-			let has_add = hunk_lines.iter().any(|l| l.starts_with('+'));
-			let has_remove = hunk_lines.iter().any(|l| l.starts_with('-'));
-			let is_actionable = has_add || has_remove;
-
-			if is_actionable {
-				raw_hunks.push(hunk_lines);
-			}
-		} else {
+			break;
+		}
+		if !is_wrapper_meta_line(trimmed) {
 			non_hunk_prefix.push(line);
 		}
 	}
@@ -127,32 +201,14 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 	// for resilient/fuzzy recovery from wrapper/meta lines.
 	if raw_hunks.is_empty() {
 		non_hunk_prefix.clear();
-		let mut lines = sanitized_patch_raw.lines().peekable();
-		while let Some(line) = lines.next() {
+		raw_hunks = collect_raw_hunks(&sanitized_patch_raw);
+
+		for line in sanitized_patch_raw.lines() {
 			let trimmed = line.trim();
-
 			if trimmed.starts_with("@@") {
-				let mut hunk_lines = Vec::new();
-				while let Some(next_line) = lines.peek() {
-					let next_trimmed = next_line.trim();
-					if next_trimmed.starts_with("@@") {
-						break;
-					}
-					hunk_lines.push(lines.next().unwrap());
-				}
-
-				while hunk_lines.last().is_some_and(|l| l.trim().is_empty()) {
-					hunk_lines.pop();
-				}
-
-				let has_add = hunk_lines.iter().any(|l| l.starts_with('+'));
-				let has_remove = hunk_lines.iter().any(|l| l.starts_with('-'));
-				let is_actionable = has_add || has_remove;
-
-				if is_actionable {
-					raw_hunks.push(hunk_lines);
-				}
-			} else {
+				break;
+			}
+			if !is_wrapper_meta_line(trimmed) {
 				non_hunk_prefix.push(line);
 			}
 		}

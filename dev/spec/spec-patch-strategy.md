@@ -127,3 +127,37 @@ When multiple hunks are present in a patch, the engine collects all hunk bodies 
 - **Early Exit**: The tiered approach ensures that well-formed, strict patches are processed quickly without ever triggering the more expensive normalization or lowercasing logic of the Resilient and Fuzzy tiers.
 - **Search Window**: While the search is greedy, it prioritizes the area immediately following the last successful hunk.
 - **Two-Pass Architecture**: The first pass to collect raw hunks is lightweight (no matching), and the second pass benefits from adjacent hunk knowledge for better disambiguation without additional file scans.
+
+## Partial Hunk Application
+
+When a `FILE_PATCH` directive contains multiple hunks, the engine applies them incrementally rather than as an all-or-nothing operation. This ensures that a single malformed or unmatchable hunk does not prevent other valid hunks in the same patch from being applied.
+
+### Incremental Apply Flow
+
+- The raw patch content is split into individual hunks using the same parsing logic as the completion engine (CRLF normalization, wrapper meta line sanitization, trailing whitespace stripping, and the actionable check).
+- Each hunk is processed independently in order, using the current in-memory file content as the base for completion and application.
+- On success: the working content is updated with the hunk's changes, and the match tier is tracked.
+- On failure: the working content remains unchanged, and the failure is recorded with the hunk body and cause.
+
+### Single-Hunk Optimization
+
+When a patch contains only one hunk, the engine delegates to the standard all-or-nothing apply path for simplicity. The incremental logic is only activated for multi-hunk patches.
+
+### Directive-Level Success Semantics
+
+- A patch directive is considered successful if at least one hunk was applied and the file write succeeded.
+- If all hunks fail, the directive is marked as failed with a summary error message.
+- The highest match tier encountered across all successfully applied hunks is reported at the directive level.
+
+### Per-Hunk Error Reporting
+
+Failed hunks are captured in the `error_hunks` field of the directive status. Each entry contains:
+
+- `hunk_body`: the raw hunk text that failed, useful for debugging.
+- `cause`: a description of why the hunk failed (e.g., completion mismatch, diffy parse error, diffy apply error).
+
+The directive-level `error_msg` field remains available for summary errors. The `error_hunks` list provides structured, per-hunk detail that callers can inspect or display.
+
+### Cross-Directive Continuation
+
+Partial hunk failure within one `FILE_PATCH` does not affect other directives. The applier processes each directive in sequence; errors are captured per directive, and subsequent directives always execute regardless of prior failures.

@@ -1,0 +1,11 @@
+# Document
+
+## First Part
+
+first_line = "hello"
+first_count = 10
+
+## Second Part
+
+second_line = "world"
+second_count = 20

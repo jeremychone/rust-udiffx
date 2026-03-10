@@ -1,6 +1,12 @@
 use crate::{FileDirective, MatchTier};
 
 #[derive(Debug, Clone)]
+pub struct HunkError {
+	pub hunk_body: String,
+	pub cause: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct ApplyChangesStatus {
 	pub items: Vec<DirectiveStatus>,
 }
@@ -11,6 +17,7 @@ pub struct DirectiveStatus {
 	pub success: bool,
 	pub match_tier: Option<MatchTier>,
 	pub error_msg: Option<String>,
+	pub error_hunks: Vec<HunkError>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +118,7 @@ impl From<&FileDirective> for DirectiveStatus {
 			success: false,
 			match_tier: None,
 			error_msg,
+			error_hunks: Vec::new(),
 		}
 	}
 }

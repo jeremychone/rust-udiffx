@@ -2,8 +2,10 @@
 
 use assertables::{assert_contains, assert_not_contains};
 use simple_fs::SPath;
-use udiffx::for_test::apply_patch;
-use udiffx::{FileDirective, extract_file_changes};
+use udiffx::for_test::{apply_patch, split_raw_hunks};
+use udiffx::{FileDirective, extract_file_changes, ApplyChangesStatus};
+
+mod test_support;
 
 type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
 
@@ -218,6 +220,176 @@ fn test_patches_test_15() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_16_partial_hunk() -> Result<()> {
+	// -- Setup & Fixtures
+	let folder = "test-16-partial-hunk";
+	let folder_path = SPath::new(format!("tests/data/test-patches/{folder}"));
+	let original_path = folder_path.join("original.txt");
+	let original = std::fs::read_to_string(&original_path)?;
+	let change_path = folder_path.join("changes.txt");
+	let changes_str = std::fs::read_to_string(change_path)?;
+
+	let normalized_changes_str = normalize_test_file_tags(&changes_str);
+
+	let (changes, _) = extract_file_changes(&normalized_changes_str, false)?;
+
+	// -- Exec
+	// Apply the patch incrementally via apply_patch_incremental (through the public apply_patch path
+	// which delegates to incremental when >1 hunk).
+	let directive = changes.into_iter().next().ok_or("Should have at least one directive")?;
+	let (content, hunk_errors) = match directive {
+		FileDirective::Patch {
+			content: patch_content, ..
+		} => {
+			let patch_raw = &patch_content.content;
+			let raw_hunks = split_raw_hunks(patch_raw);
+
+			// Verify we have 3 hunks in this scenario
+			assert_eq!(raw_hunks.len(), 3, "Expected 3 hunks in test-16 scenario");
+
+			// Apply hunks incrementally, simulating what apply_file_changes does internally
+			let original_had_crlf = original.contains("\r\n");
+			let mut working = if original_had_crlf {
+				original.replace("\r\n", "\n")
+			} else {
+				original.clone()
+			};
+			if !working.is_empty() && !working.ends_with('\n') {
+				working.push('\n');
+			}
+
+			let mut errors = Vec::new();
+			let mut applied = 0usize;
+
+			for raw_hunk in &raw_hunks {
+				let res: std::result::Result<String, String> = (|| {
+					let (completed, _tier) =
+						udiffx::for_test::complete(&working, raw_hunk).map_err(|e| e.to_string())?;
+					if completed.is_empty() {
+						return Err("Empty completed patch".to_string());
+					}
+					let patch_obj =
+						diffy::Patch::from_str(&completed).map_err(|e| format!("diffy parse: {e}"))?;
+					let new_content =
+						diffy::apply(&working, &patch_obj).map_err(|e| format!("diffy apply: {e}"))?;
+					Ok(new_content)
+				})();
+
+				match res {
+					Ok(new_content) => {
+						working = new_content;
+						applied += 1;
+					}
+					Err(cause) => {
+						errors.push((raw_hunk.clone(), cause));
+					}
+				}
+			}
+
+			assert!(applied > 0, "At least one hunk should have applied");
+			(working, errors)
+		}
+		_ => return Err("Expected FILE_PATCH directive".into()),
+	};
+
+	// -- Check
+	// Hunk 1 applied: alpha_key updated
+	assert_contains!(content, "alpha_key = \"alpha_updated\"");
+	assert_not_contains!(content, "alpha_key = \"alpha_value\"");
+
+	// Hunk 2 failed: beta section unchanged
+	assert_contains!(content, "beta_key = \"beta_value\"");
+
+	// Hunk 3 applied: gamma_key updated
+	assert_contains!(content, "gamma_key = \"gamma_updated\"");
+	assert_not_contains!(content, "gamma_key = \"gamma_value\"");
+
+	// Exactly one hunk error (hunk 2)
+	assert_eq!(hunk_errors.len(), 1, "Expected exactly 1 failed hunk");
+	assert!(!hunk_errors[0].1.is_empty(), "Error cause should be non-empty");
+
+	Ok(())
+}
+
+#[test]
+fn test_patches_test_17_all_hunks_fail() -> Result<()> {
+	// -- Setup & Fixtures
+	let folder = "test-17-all-hunks-fail";
+	let folder_path = SPath::new(format!("tests/data/test-patches/{folder}"));
+	let original_path = folder_path.join("original.txt");
+	let original = std::fs::read_to_string(&original_path)?;
+	let change_path = folder_path.join("changes.txt");
+	let changes_str = std::fs::read_to_string(change_path)?;
+
+	let normalized_changes_str = normalize_test_file_tags(&changes_str);
+
+	let (changes, _) = extract_file_changes(&normalized_changes_str, false)?;
+
+	// -- Exec
+	let directive = changes.into_iter().next().ok_or("Should have at least one directive")?;
+	let result = match directive {
+		FileDirective::Patch {
+			content: patch_content, ..
+		} => {
+			let patch_raw = &patch_content.content;
+			let raw_hunks = split_raw_hunks(patch_raw);
+
+			assert_eq!(raw_hunks.len(), 2, "Expected 2 hunks in test-17 scenario");
+
+			let original_had_crlf = original.contains("\r\n");
+			let mut working = if original_had_crlf {
+				original.replace("\r\n", "\n")
+			} else {
+				original.clone()
+			};
+			if !working.is_empty() && !working.ends_with('\n') {
+				working.push('\n');
+			}
+
+			let mut applied = 0usize;
+
+			for raw_hunk in &raw_hunks {
+				let res: std::result::Result<String, String> = (|| {
+					let (completed, _tier) =
+						udiffx::for_test::complete(&working, raw_hunk).map_err(|e| e.to_string())?;
+					if completed.is_empty() {
+						return Err("Empty completed patch".to_string());
+					}
+					let patch_obj =
+						diffy::Patch::from_str(&completed).map_err(|e| format!("diffy parse: {e}"))?;
+					let new_content =
+						diffy::apply(&working, &patch_obj).map_err(|e| format!("diffy apply: {e}"))?;
+					Ok(new_content)
+				})();
+
+				if let Ok(new_content) = res {
+					working = new_content;
+					applied += 1;
+				}
+			}
+
+			if applied == 0 {
+				Err("All hunks failed".to_string())
+			} else {
+				Ok(working)
+			}
+		}
+		_ => Err("Expected FILE_PATCH directive".to_string()),
+	};
+
+	// -- Check
+	// All hunks should have failed
+	let err = result.err().ok_or("Should have failed because all hunks have wrong context")?;
+	assert_contains!(err, "All hunks failed");
+
+	// Original content should be unchanged (we never modified the original variable)
+	assert_contains!(original, "first_line = \"hello\"");
+	assert_contains!(original, "second_line = \"world\"");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
@@ -227,12 +399,7 @@ fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
 	let change_path = folder_path.join("changes.txt");
 	let changes_str = std::fs::read_to_string(change_path)?;
 
-	let normalized_changes_str = changes_str
-		.replace("TEST_FILE_CHANGES", "FILE_CHANGES")
-		.replace("TEST_FILE_PATCH", "FILE_PATCH")
-		.replace("TEST_FILE_NEW", "FILE_NEW")
-		.replace("TEST_FILE_RENAME", "FILE_RENAME")
-		.replace("TEST_FILE_DELETE", "FILE_DELETE");
+	let normalized_changes_str = normalize_test_file_tags(&changes_str);
 
 	let (changes, _) = extract_file_changes(&normalized_changes_str, false)?;
 	let mut content = original;
@@ -257,6 +424,18 @@ fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
 	}
 
 	Ok(content)
+}
+
+/// Normalizes `TEST_FILE_*` tags to `FILE_*` tags so test fixture files
+/// do not collide with the real tag names during extraction.
+fn normalize_test_file_tags(input: &str) -> String {
+	input
+		.replace("TEST_FILE_CHANGES", "FILE_CHANGES")
+		.replace("TEST_FILE_PATCH", "FILE_PATCH")
+		.replace("TEST_FILE_NEW", "FILE_NEW")
+		.replace("TEST_FILE_APPEND", "FILE_APPEND")
+		.replace("TEST_FILE_RENAME", "FILE_RENAME")
+		.replace("TEST_FILE_DELETE", "FILE_DELETE")
 }
 
 // endregion: --- Support
