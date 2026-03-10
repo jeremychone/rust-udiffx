@@ -90,7 +90,7 @@ struct AdjacentHints<'a> {
 /// Collects raw hunk bodies from patch text, returning each hunk as a `Vec<&str>` of body lines.
 ///
 /// Shared by both `split_raw_hunks` and `complete` to avoid duplicating the parsing logic.
-fn collect_raw_hunks<'a>(patch_text: &'a str) -> Vec<Vec<&'a str>> {
+fn collect_raw_hunks(patch_text: &str) -> Vec<Vec<&str>> {
 	let mut raw_hunks: Vec<Vec<&str>> = Vec::new();
 	let mut lines = patch_text.lines().peekable();
 

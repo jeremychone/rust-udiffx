@@ -230,10 +230,7 @@ fn test_changes_append_empty_is_no_change() -> Result<()> {
 
 	// -- Check
 	assert_eq!(status.items.len(), 1, "Should have 1 directive status");
-	assert!(
-		!status.items[0].success,
-		"Directive should have failed with no changes"
-	);
+	assert!(!status.items[0].success, "Directive should have failed with no changes");
 	let err = status.items[0].error_msg.as_ref().ok_or("should have error message")?;
 	assert!(
 		err.contains("No changes applied"),

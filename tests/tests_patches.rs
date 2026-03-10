@@ -3,7 +3,7 @@
 use assertables::{assert_contains, assert_not_contains};
 use simple_fs::SPath;
 use udiffx::for_test::{apply_patch, split_raw_hunks};
-use udiffx::{FileDirective, extract_file_changes, ApplyChangesStatus};
+use udiffx::{FileDirective, extract_file_changes};
 
 mod test_support;
 
@@ -269,10 +269,8 @@ fn test_patches_test_16_partial_hunk() -> Result<()> {
 					if completed.is_empty() {
 						return Err("Empty completed patch".to_string());
 					}
-					let patch_obj =
-						diffy::Patch::from_str(&completed).map_err(|e| format!("diffy parse: {e}"))?;
-					let new_content =
-						diffy::apply(&working, &patch_obj).map_err(|e| format!("diffy apply: {e}"))?;
+					let patch_obj = diffy::Patch::from_str(&completed).map_err(|e| format!("diffy parse: {e}"))?;
+					let new_content = diffy::apply(&working, &patch_obj).map_err(|e| format!("diffy apply: {e}"))?;
 					Ok(new_content)
 				})();
 
@@ -356,10 +354,8 @@ fn test_patches_test_17_all_hunks_fail() -> Result<()> {
 					if completed.is_empty() {
 						return Err("Empty completed patch".to_string());
 					}
-					let patch_obj =
-						diffy::Patch::from_str(&completed).map_err(|e| format!("diffy parse: {e}"))?;
-					let new_content =
-						diffy::apply(&working, &patch_obj).map_err(|e| format!("diffy apply: {e}"))?;
+					let patch_obj = diffy::Patch::from_str(&completed).map_err(|e| format!("diffy parse: {e}"))?;
+					let new_content = diffy::apply(&working, &patch_obj).map_err(|e| format!("diffy apply: {e}"))?;
 					Ok(new_content)
 				})();
 

@@ -1188,8 +1188,6 @@ fn test_patch_completer_complete_double_prefix_context_space_prefixed_line() -> 
 	Ok(())
 }
 
-/// Verifies that a surround-only hunk between actionable hunks is ignored,
-
 // -- Fuzzy Quote Normalization Tests
 
 /// Verifies that double-quote vs single-quote flip matches at the Fuzzy tier
@@ -1208,11 +1206,7 @@ fn test_patch_completer_complete_fuzzy_quote_flip_double_to_single() -> Result<(
 	assert!(completed.contains("+let x = 2;"));
 	assert!(completed.contains("@@ -1,2 +1,2 @@"));
 	let tier = tier.ok_or("Should have a tier")?;
-	assert_eq!(
-		tier,
-		MatchTier::Fuzzy,
-		"Expected Fuzzy tier for quote flip tolerance"
-	);
+	assert_eq!(tier, MatchTier::Fuzzy, "Expected Fuzzy tier for quote flip tolerance");
 
 	Ok(())
 }
@@ -1233,11 +1227,7 @@ fn test_patch_completer_complete_fuzzy_quote_flip_single_to_double() -> Result<(
 	assert!(completed.contains("+let x = 2;"));
 	assert!(completed.contains("@@ -1,2 +1,2 @@"));
 	let tier = tier.ok_or("Should have a tier")?;
-	assert_eq!(
-		tier,
-		MatchTier::Fuzzy,
-		"Expected Fuzzy tier for quote flip tolerance"
-	);
+	assert_eq!(tier, MatchTier::Fuzzy, "Expected Fuzzy tier for quote flip tolerance");
 
 	Ok(())
 }
