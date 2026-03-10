@@ -3,6 +3,26 @@ use std::borrow::Cow;
 
 // region:    --- Public Helpers
 
+/// Returns `true` if the raw patch text contains at least one actionable hunk
+/// (i.e., a hunk with at least one `+` or `-` line).
+pub fn has_actionable_hunks(patch_raw: &str) -> bool {
+	let patch_raw: Cow<'_, str> = if patch_raw.contains("\r\n") {
+		Cow::Owned(patch_raw.replace("\r\n", "\n"))
+	} else {
+		Cow::Borrowed(patch_raw)
+	};
+
+	let raw_hunks = collect_raw_hunks(&patch_raw);
+	if !raw_hunks.is_empty() {
+		return true;
+	}
+
+	// Retry with sanitized content
+	let sanitized = sanitize_wrapper_meta_lines(&patch_raw);
+	let raw_hunks = collect_raw_hunks(&sanitized);
+	!raw_hunks.is_empty()
+}
+
 /// Splits a raw simplified patch (numberless `@@` hunks) into individual hunk strings.
 ///
 /// Each returned `String` contains a single `@@` header followed by its body lines.

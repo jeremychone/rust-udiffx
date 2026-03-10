@@ -177,8 +177,8 @@ pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<(
 	let (completed_patch, tier) = patch_completer::complete(&original_fixed, &patch_lf)?;
 	let patch_obj =
 		Patch::from_str(&completed_patch).map_err(|err| Error::diffy_parse_patch(file_path, err, &completed_patch))?;
-	let mut new_content =
-		diffy_apply(&original_fixed, &patch_obj).map_err(|err| Error::diffy_apply_patch(file_path, err, &completed_patch))?;
+	let mut new_content = diffy_apply(&original_fixed, &patch_obj)
+		.map_err(|err| Error::diffy_apply_patch(file_path, err, &completed_patch))?;
 
 	if !CRLF_SAVE_TO_LDF && original_had_crlf {
 		new_content = new_content.replace('\n', "\r\n");
@@ -231,18 +231,17 @@ fn apply_patch_incremental(
 
 	for raw_hunk in &raw_hunks {
 		let result: std::result::Result<(String, Option<MatchTier>), String> = (|| {
-			let (completed_patch, tier) = patch_completer::complete(&working_content, raw_hunk)
-				.map_err(|e| e.to_string())?;
+			let (completed_patch, tier) =
+				patch_completer::complete(&working_content, raw_hunk).map_err(|e| e.to_string())?;
 
 			if completed_patch.is_empty() {
 				return Err("Hunk produced empty completed patch".to_string());
 			}
 
-			let patch_obj = Patch::from_str(&completed_patch)
-				.map_err(|e| format!("diffy parse error: {e}"))?;
+			let patch_obj = Patch::from_str(&completed_patch).map_err(|e| format!("diffy parse error: {e}"))?;
 
-			let new_content = diffy_apply(&working_content, &patch_obj)
-				.map_err(|e| format!("diffy apply error: {e}"))?;
+			let new_content =
+				diffy_apply(&working_content, &patch_obj).map_err(|e| format!("diffy apply error: {e}"))?;
 
 			Ok((new_content, tier))
 		})();
@@ -265,11 +264,7 @@ fn apply_patch_incremental(
 	}
 
 	if applied_count == 0 {
-		let summary = format!(
-			"All {} hunks failed to apply for '{}'",
-			raw_hunks.len(),
-			file_path
-		);
+		let summary = format!("All {} hunks failed to apply for '{}'", raw_hunks.len(), file_path);
 		return Err(Error::custom(summary));
 	}
 
