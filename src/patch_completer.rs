@@ -313,6 +313,15 @@ fn strip_all_ws(s: &str) -> String {
 	s.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
+/// Normalizes inline formatting tokens for fuzzy comparison.
+/// Removes backticks and canonicalizes both single and double quotes to single quote.
+fn normalize_inline_fuzzy(s: &str) -> String {
+	s.chars()
+		.filter(|c| *c != '`')
+		.map(|c| if c == '"' { '\'' } else { c })
+		.collect()
+}
+
 /// Represents a candidate match found during hunk position search.
 struct CandidateMatch {
 	idx: usize,
@@ -453,9 +462,23 @@ fn line_matches(orig_line: &str, p_line: &str, tier: MatchTier) -> bool {
 				// Also check if they match ignoring backticks (common Markdown LLM variance)
 				|| o_l.replace('`', "") == p_l.replace('`', "")
 				|| normalize_ws(&o_l.replace('`', "")) == normalize_ws(&p_l.replace('`', ""))
-				// Also check if they match ignoring trailing punctuation (common LLM error)
+				// Also check via full inline-format normalization (backticks + quote canonicalization)
+				|| {
+					let o_norm = normalize_inline_fuzzy(&o_l);
+					let p_norm = normalize_inline_fuzzy(&p_l);
+					!o_norm.trim().is_empty()
+						&& !p_norm.trim().is_empty()
+						&& (o_norm == p_norm || normalize_ws(&o_norm) == normalize_ws(&p_norm))
+				}
+				// Also check if they match ignoring trailing punctuation (common LLM error),
+				// with quote normalization applied as well.
 				|| o_l.trim_end_matches(|c: char| c.is_ascii_punctuation())
 					== p_l.trim_end_matches(|c: char| c.is_ascii_punctuation())
+				|| {
+					let o_punct = normalize_inline_fuzzy(&o_l).trim_end_matches(|c: char| c.is_ascii_punctuation()).to_string();
+					let p_punct = normalize_inline_fuzzy(&p_l).trim_end_matches(|c: char| c.is_ascii_punctuation()).to_string();
+					!o_punct.trim().is_empty() && !p_punct.trim().is_empty() && o_punct == p_punct
+				}
 				// Also check if they match after stripping numeric literal underscores
 				|| normalize_ws(&strip_numeric_underscores(&o_l))
 					== normalize_ws(&strip_numeric_underscores(&p_l))
