@@ -160,6 +160,8 @@ fn main() -> Result<()> {
 - `FILE_NEW`: creates or overwrites a file. Parent directories are created.
 - `FILE_PATCH`: reads the target file, applies a unified diff, and writes the result back.
   - When a patch contains multiple hunks, each hunk is applied independently. If some hunks fail, the successfully applied hunks are still written. The directive is considered successful if at least one hunk applies. Per-hunk failure details are available in `DirectiveStatus.error_hunks`.
+  - The patch matcher is resilient to common LLM artifacts, including wrapper lines like `*** Begin Patch` / `*** End Patch`, whitespace normalization, suffix-only context fragments, blank-line drift, and several fuzzy formatting differences.
+  - A patch can also create a previously missing file by applying against empty original content.
 - `FILE_RENAME`: renames or moves `from_path` to `to_path`.
 - `FILE_DELETE`: removes a file or directory recursively.
 

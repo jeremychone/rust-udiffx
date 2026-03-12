@@ -77,11 +77,28 @@ The scoring factors are evaluated in the following priority order (highest to lo
 
 The strategy includes specific handlers for common LLM formatting artifacts.
 
+### Wrapper Meta Line Sanitization
+
+LLM outputs sometimes wrap simplified hunks in outer helper lines such as:
+
+- `*** Begin Patch`
+- `*** Update File: ...`
+- `*** End Patch`
+
+These wrapper meta lines are not part of the simplified unified diff format and must not interfere with hunk parsing.
+
+- During actionable-hunk detection and hunk splitting, the engine first tries the raw content as-is.
+- If no actionable hunks are found, it retries after removing recognized wrapper meta lines.
+- Non-wrapper `*** ...` lines remain normal content and can still be matched literally when they are part of the original file.
+
+This preserves strict behavior for legitimate file content while still recovering from common wrapper artifacts in LLM output.
+
 ### Hunk Cleanup (Artifact Removal)
 
 To ensure high reliability, the engine performs a cleanup step on each hunk before matching:
 
 - **Trailing Whitespace-Only Lines**: Any lines at the end of a hunk that consist solely of whitespace (including a single space `" "` which can be mistaken for a blank context line) are stripped. These are typically artifacts of the XML/tag extraction process and do not represent intentional patch content. This cleanup allows hunks containing only additions followed by cosmetic whitespace to be correctly identified as append-only operations.
+- **Surround-Only Hunk Filtering**: A hunk is considered actionable only if it contains at least one `+` or `-` line. Hunks containing only context lines are ignored during splitting and completion. If all hunks are surround-only, completion returns an empty patch and no match tier.
 
 ### Suffix Matching
 
@@ -94,6 +111,7 @@ LLMs often insert "cosmetic" blank lines in patches for readability, or converse
 - If a patch contains a blank context line that aligns with a blank line in the source, it matches normally.
 - If a blank context line does not align with a blank line in the source, the engine converts that hunk line into an addition (`+`) line. This preserves the LLM's intended spacing without causing alignment drift for subsequent context lines.
 - In Resilient and Fuzzy tiers, if the original file contains consecutive blank lines that are not present in the patch context before a non-blank line, the engine automatically skips these extra source blank lines and includes them in the resulting hunk to maintain correct alignment.
+- When reconstructing the final completed hunk, skipped original blank lines are emitted back as exact context lines before the next matched line, preserving file alignment for downstream application.
 
 ### EOF Overhang
 
@@ -122,6 +140,15 @@ When the original content is empty (or contains only blank lines) and a `FILE_PA
 
 When multiple hunks are present in a patch, the engine collects all hunk bodies in a first pass, then processes each hunk with knowledge of the adjacent hunks' context lines. This allows the scoring system to disambiguate identical code blocks by verifying that the surrounding file content matches what neighboring hunks expect. See the "Adjacent Hunk Context Disambiguation" section under Match Resolution and Scoring for details.
 
+### Empty Completed Patch Semantics
+
+If no actionable hunks are found, and there are no preserved non-hunk prefix lines, patch completion returns:
+
+- an empty completed patch string
+- no match tier
+
+This represents a no-op completion result from the completer itself.
+
 ## Performance Considerations
 
 - **Early Exit**: The tiered approach ensures that well-formed, strict patches are processed quickly without ever triggering the more expensive normalization or lowercasing logic of the Resilient and Fuzzy tiers.
@@ -139,15 +166,23 @@ When a `FILE_PATCH` directive contains multiple hunks, the engine applies them i
 - On success: the working content is updated with the hunk's changes, and the match tier is tracked.
 - On failure: the working content remains unchanged, and the failure is recorded with the hunk body and cause.
 
+Before per-hunk application:
+
+- The applier normalizes CRLF input to LF for both original content and patch content.
+- If the original content is non-empty and lacks a trailing newline, one is added before patch completion and diff application.
+
 ### Single-Hunk Optimization
 
 When a patch contains only one hunk, the engine delegates to the standard all-or-nothing apply path for simplicity. The incremental logic is only activated for multi-hunk patches.
+- This preserves the existing public `apply_patch` behavior while allowing multi-hunk `FILE_PATCH` directives to partially succeed.
 
 ### Directive-Level Success Semantics
 
 - A patch directive is considered successful if at least one hunk was applied and the file write succeeded.
 - If all hunks fail, the directive is marked as failed with a summary error message.
 - The highest match tier encountered across all successfully applied hunks is reported at the directive level.
+- If at least one hunk applies but some fail, the directive is still successful and the partial failures are exposed through `error_hunks`.
+- After patch application, if the resulting file content is unchanged from the original and the target file already exists, the directive is treated as `No changes applied`.
 
 ### Per-Hunk Error Reporting
 
@@ -158,6 +193,18 @@ Failed hunks are captured in the `error_hunks` field of the directive status. Ea
 
 The directive-level `error_msg` field remains available for summary errors. The `error_hunks` list provides structured, per-hunk detail that callers can inspect or display.
 
+At the status-model level:
+
+- `DirectiveStatus.error_hunks` is populated only for patch directives.
+- `DirectiveStatus.match_tier` stores the highest tier used by any successfully applied hunk.
+- `HunkError` contains the raw single-hunk body and the per-hunk failure cause.
+
 ### Cross-Directive Continuation
 
 Partial hunk failure within one `FILE_PATCH` does not affect other directives. The applier processes each directive in sequence; errors are captured per directive, and subsequent directives always execute regardless of prior failures.
+
+### File Creation and Writeback Behavior
+
+- A `FILE_PATCH` may target a file that does not yet exist. In that case, the applier treats the original content as empty and still attempts completion and application.
+- If patch application succeeds for a non-existent target, parent directories are created before writing the new file.
+- The current implementation writes output using LF line endings, even when the original input contained CRLF.

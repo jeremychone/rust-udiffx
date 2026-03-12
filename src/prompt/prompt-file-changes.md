@@ -8,7 +8,7 @@ _file_change_directives_
 
 You may include explanation before or after the `<FILE_CHANGES>` block. If no changes are required, output nothing.
 
-IMPORTANT: There can be only one FILE_CHANGES tag per response. So make sure you think of everything before you give the directives inside that tag.
+IMPORTANT: There can be only one FILE_CHANGES tag per response. So make sure you think of everything before you give the file directives inside that tag.
 
 IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and cannot contain any other tag.
 
