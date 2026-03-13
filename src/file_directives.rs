@@ -12,6 +12,10 @@ pub enum FileDirective {
 		file_path: String,
 		content: Content,
 	},
+	Copy {
+		from_path: String,
+		to_path: String,
+	},
 	Rename {
 		from_path: String,
 		to_path: String,

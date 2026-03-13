@@ -19,6 +19,7 @@ IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and ca
 | `FILE_NEW`    | Create a new file                                                |
 | `FILE_APPEND` | Append content to the end of a file (use this to append to file) |
 | `FILE_PATCH`  | Modify an existing file via unified diff                         |
+| `FILE_COPY`   | Copy a file                                                      |
 | `FILE_RENAME` | Rename or move a file                                            |
 | `FILE_DELETE` | Delete a file                                                    |
 
@@ -92,6 +93,16 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 (context line - if needed)
 </FILE_PATCH>
 
+### FILE_COPY
+
+Copies a file from `from_path` to `to_path`.
+
+- The source must exist and be a file.
+- The destination parent directories are created if needed.
+- If the destination already exists, it is overwritten.
+
+<FILE_COPY from_path="old/path.ext" to_path="new/path.ext" />
+
 ### FILE_RENAME
 
 <FILE_RENAME from_path="old/path.ext" to_path="new/path.ext" />
@@ -126,6 +137,8 @@ println!("Hello from hello.rs");
 - hello::hello();
   }
   </FILE_PATCH>
+
+<FILE_COPY from_path="docs/OLD_README.md" to_path="docs/README.backup.md" />
 
 <FILE_RENAME from_path="docs/OLD_README.md" to_path="README.md" />
 

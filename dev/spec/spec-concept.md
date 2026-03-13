@@ -67,7 +67,23 @@ CONTENT_TO_APPEND
 </FILE_APPEND>
 ```
 
-### 4. Rename File (`FILE_RENAME`)
+### 4. Copy File (`FILE_COPY`)
+
+Used to copy a file from one path to another.
+
+- Attributes: `from_path="..."`, `to_path="..."`
+- Behavior:
+  - The source must exist and be a file.
+  - The destination parent directory is created if needed.
+  - If the destination already exists, it is overwritten.
+  - The copy is binary-content based and does not preserve permissions or timestamps.
+
+Format:
+```xml
+<FILE_COPY from_path="src/template.rs" to_path="src/template_copy.rs" />
+```
+
+### 5. Rename File (`FILE_RENAME`)
 
 Used to move or rename files and directories.
 
@@ -78,7 +94,7 @@ Format:
 <FILE_RENAME from_path="src/old.rs" to_path="src/new.rs" />
 ```
 
-### 5. Delete File (`FILE_DELETE`)
+### 6. Delete File (`FILE_DELETE`)
 
 Used to permanently remove a file or directory.
 
@@ -114,6 +130,8 @@ Below is an example of a single response containing multiple operations, using b
 
 ```xml
 <FILE_CHANGES>
+
+<FILE_COPY from_path="src/helpers.rs" to_path="src/helpers_backup.rs" />
 
 <FILE_RENAME from_path="src/legacy_mod.rs" to_path="src/core_mod.rs" />
 

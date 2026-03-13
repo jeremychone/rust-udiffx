@@ -31,6 +31,10 @@ pub enum DirectiveKind {
 	Append {
 		file_path: String,
 	},
+	Copy {
+		from_path: String,
+		file_path: String,
+	},
 	Rename {
 		from_path: String,
 		file_path: String,
@@ -51,6 +55,7 @@ impl DirectiveStatus {
 			DirectiveKind::New { file_path } => file_path,
 			DirectiveKind::Patch { file_path } => file_path,
 			DirectiveKind::Append { file_path } => file_path,
+			DirectiveKind::Copy { file_path, .. } => file_path,
 			DirectiveKind::Rename { file_path, .. } => file_path,
 			DirectiveKind::Delete { file_path } => file_path,
 			DirectiveKind::Fail { file_path, .. } => file_path.as_deref().unwrap_or("unknown"),
@@ -70,6 +75,7 @@ impl DirectiveStatus {
 			DirectiveKind::New { .. } => "New",
 			DirectiveKind::Patch { .. } => "Patch",
 			DirectiveKind::Append { .. } => "Append",
+			DirectiveKind::Copy { .. } => "Copy",
 			DirectiveKind::Rename { .. } => "Rename",
 			DirectiveKind::Delete { .. } => "Delete",
 			DirectiveKind::Fail { .. } => "Fail",
@@ -92,6 +98,10 @@ impl From<&FileDirective> for DirectiveStatus {
 			},
 			FileDirective::Append { file_path, .. } => DirectiveKind::Append {
 				file_path: file_path.clone(),
+			},
+			FileDirective::Copy { from_path, to_path } => DirectiveKind::Copy {
+				from_path: from_path.clone(),
+				file_path: to_path.clone(),
 			},
 			FileDirective::Rename { from_path, to_path } => DirectiveKind::Rename {
 				from_path: from_path.clone(),

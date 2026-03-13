@@ -103,6 +103,29 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						.map_err(|err| Error::io_write_file(full_path.to_string(), err))?;
 				}
 
+				FileDirective::Copy { from_path, to_path } => {
+					let full_from = base_dir.join(&from_path);
+					let full_to = base_dir.join(&to_path);
+
+					fs_guard::check_for_read(&full_from, &base_dir)?;
+					fs_guard::check_for_write(&full_to, &base_dir)?;
+
+					if full_from.exists() {
+						if full_from.is_dir() {
+							return Err(Error::custom(format!("copy source is not a file: {from_path}")));
+						}
+
+						ensure_file_dir(&full_to).map_err(Error::simple_fs)?;
+
+						let source_bytes =
+							fs::read(&full_from).map_err(|err| Error::io_read_file(full_from.to_string(), err))?;
+						fs::write(&full_to, source_bytes)
+							.map_err(|err| Error::io_write_file(full_to.to_string(), err))?;
+					} else {
+						return Err(Error::apply_path_not_found("copy source", from_path));
+					}
+				}
+
 				FileDirective::Rename { from_path, to_path } => {
 					let full_from = base_dir.join(&from_path);
 					let full_to = base_dir.join(&to_path);

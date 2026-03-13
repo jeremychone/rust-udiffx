@@ -23,7 +23,14 @@ pub fn extract_file_changes(input: &str, extrude_other_content: bool) -> Result<
 
 	let child_parts = tag::extract(
 		&inner_content,
-		&["FILE_NEW", "FILE_PATCH", "FILE_APPEND", "FILE_RENAME", "FILE_DELETE"],
+		&[
+			"FILE_NEW",
+			"FILE_PATCH",
+			"FILE_APPEND",
+			"FILE_COPY",
+			"FILE_RENAME",
+			"FILE_DELETE",
+		],
 		false,
 	);
 
@@ -72,6 +79,16 @@ pub fn extract_file_changes(input: &str, extrude_other_content: bool) -> Result<
 						content: Content::from_raw(elem.content),
 					})
 				}
+				"FILE_COPY" => {
+					let from_path = attrs
+						.remove("from_path")
+						.ok_or_else(|| Error::parse_missing_attribute("FILE_COPY", "from_path"))?;
+					let to_path = attrs
+						.remove("to_path")
+						.ok_or_else(|| Error::parse_missing_attribute("FILE_COPY", "to_path"))?;
+
+					Ok(FileDirective::Copy { from_path, to_path })
+				}
 				"FILE_RENAME" => {
 					let from_path = attrs
 						.remove("from_path")
@@ -112,7 +129,14 @@ pub fn extract_file_changes(input: &str, extrude_other_content: bool) -> Result<
 
 /// Expands self-closing tags like <TAG /> to <TAG></TAG> so markex can find them.
 fn expand_self_closing_tags(mut content: String) -> String {
-	let tags = ["FILE_NEW", "FILE_PATCH", "FILE_APPEND", "FILE_RENAME", "FILE_DELETE"];
+	let tags = [
+		"FILE_NEW",
+		"FILE_PATCH",
+		"FILE_APPEND",
+		"FILE_COPY",
+		"FILE_RENAME",
+		"FILE_DELETE",
+	];
 	for tag in tags {
 		let mut search_pos = 0;
 		let tag_pattern = format!("<{tag}");

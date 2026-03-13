@@ -16,6 +16,8 @@ Inside it, you can mix multiple directives:
 
 - `<FILE_NEW file_path="..."> ... </FILE_NEW>`
 - `<FILE_PATCH file_path="..."> ... </FILE_PATCH>` (unified diff content)
+- `<FILE_APPEND file_path="..."> ... </FILE_APPEND>`
+- `<FILE_COPY from_path="..." to_path="..." />`
 - `<FILE_RENAME from_path="..." to_path="..." />`
 - `<FILE_DELETE file_path="..." />`
 
@@ -35,7 +37,7 @@ The crate exposes two main operations:
 Key public types:
 
 - `FileChanges`, an iterable list of directives.
-- `FileDirective`, one directive (new, patch, rename, delete, fail).
+- `FileDirective`, one directive (new, patch, append, copy, rename, delete, fail).
 - `ApplyChangesStatus`, per-directive success and error reporting.
 - `Error` / `Result<T>`, the crate error type and alias.
 
@@ -158,10 +160,16 @@ fn main() -> Result<()> {
 ## Directive behavior
 
 - `FILE_NEW`: creates or overwrites a file. Parent directories are created.
+- `FILE_APPEND`: appends content to the end of a file. If the file does not exist, it is created.
 - `FILE_PATCH`: reads the target file, applies a unified diff, and writes the result back.
   - When a patch contains multiple hunks, each hunk is applied independently. If some hunks fail, the successfully applied hunks are still written. The directive is considered successful if at least one hunk applies. Per-hunk failure details are available in `DirectiveStatus.error_hunks`.
   - The patch matcher is resilient to common LLM artifacts, including wrapper lines like `*** Begin Patch` / `*** End Patch`, whitespace normalization, suffix-only context fragments, blank-line drift, and several fuzzy formatting differences.
   - A patch can also create a previously missing file by applying against empty original content.
+- `FILE_COPY`: copies a file from `from_path` to `to_path`.
+  - The source must exist and be a file.
+  - The destination parent directories are created as needed.
+  - If the destination exists, it is overwritten.
+  - Copy is performed as a binary file copy, without preserving permissions.
 - `FILE_RENAME`: renames or moves `from_path` to `to_path`.
 - `FILE_DELETE`: removes a file or directory recursively.
 
@@ -175,7 +183,8 @@ When applying, `Fail` directives always yield an error for that directive and ar
 
 - Always emit exactly one `<FILE_CHANGES>` block when you intend to apply changes.
 - Prefer `FILE_PATCH` for small edits to large files.
-- Use self-closing tags for rename and delete when convenient:
+- Use self-closing tags for copy, rename, and delete when convenient:
+  - `<FILE_COPY from_path="a" to_path="b" />`
   - `<FILE_RENAME from_path="a" to_path="b" />`
   - `<FILE_DELETE file_path="path" />`
 
