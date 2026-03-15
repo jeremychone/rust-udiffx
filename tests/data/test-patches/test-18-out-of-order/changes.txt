@@ -1,0 +1,28 @@
+<FILE_CHANGES>
+
+<FILE_PATCH file_path="tests/data/test-patches/test-18/original.txt">
+@@
+ 	void TogoLineManipulator::setBothPlanesChangedCallback(BothPlanesChangedCallback cb) { m_bothPlanesCallback = std::move(cb); }
+
++	void TogoLineManipulator::setDragStartedCallback(DragStartedCallback cb) { m_dragStartedCallback = std::move(cb); }
++
++	void TogoLineManipulator::setDragEndedCallback(DragEndedCallback cb) { m_dragEndedCallback = std::move(cb); }
++
+ 	void TogoLineManipulator::setHitThreshold(double pixels) { m_hitThreshold = pixels; }
+@@
+ 				m_dragStartRedPlane = m_redPlane;
+ 				m_dragStartGreenPlane = m_greenPlane;
+ 				m_useFirstHitpointForDrag = true;
++
++				if (m_dragStartedCallback)
++				{
++					m_dragStartedCallback();
++				}
+
+ 			// Capture stable line direction and original plane normal at drag start
+</FILE_PATCH>
+
+
+</FILE_CHANGES>
+
+

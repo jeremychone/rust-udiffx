@@ -386,6 +386,15 @@ fn test_patches_test_17_all_hunks_fail() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_18() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-18-out-of-order", false)?;
+
+	// -- Check
+	println!("->> {content}");
+	Ok(())
+}
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {

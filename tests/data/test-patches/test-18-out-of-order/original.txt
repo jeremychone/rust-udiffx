@@ -1,0 +1,40 @@
+
+				m_dragButton = mouseEvent->button();
+				m_dragStartWorld = hitOnTogo;
+				m_prevHitWorld = hitOnTogo;
+				m_dragStartRedPlane = m_redPlane;
+				m_dragStartGreenPlane = m_greenPlane;
+				m_useFirstHitpointForDrag = true;
+
+			// Capture stable line direction and original plane normal at drag start
+			// to prevent sign oscillation from line recomputation during drag.
+
+		// Non-dragging move events and other events: don't consume
+		return false;
+	}
+
+	void TogoLineManipulator::setIntersectionLines(GlTogoIntersectionLines* lines) { m_lines = lines; }
+
+	void TogoLineManipulator::setTogoPlane(const vec3& center, const vec3& normal)
+	{
+		m_TogoCenter = center;
+		m_TogoNormal = normal.normalized();
+	}
+
+	void TogoLineManipulator::setPlaneMatrices(const mat4& redPlane, const mat4& greenPlane)
+	{
+		m_redPlane = redPlane;
+		m_greenPlane = greenPlane;
+	}
+
+	void TogoLineManipulator::setMode(ManipulationMode mode) { m_mode = mode; }
+
+	void TogoLineManipulator::setApex(const vec3& apex) { m_apex = apex; }
+
+	void TogoLineManipulator::setPlaneChangedCallback(PlaneChangedCallback cb) { m_callback = std::move(cb); }
+
+	void TogoLineManipulator::setBothPlanesChangedCallback(BothPlanesChangedCallback cb) { m_bothPlanesCallback = std::move(cb); }
+
+	void TogoLineManipulator::setHitThreshold(double pixels) { m_hitThreshold = pixels; }
+
+	void TogoLineManipulator::setWorldHitThreshold(double mm) { m_worldHitThreshold = mm; }
