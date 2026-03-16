@@ -157,6 +157,25 @@ This represents a no-op completion result from the completer itself.
 - **Search Window**: While the search is greedy, it prioritizes the area immediately following the last successful hunk.
 - **Two-Pass Architecture**: The first pass to collect raw hunks is lightweight (no matching), and the second pass benefits from adjacent hunk knowledge for better disambiguation without additional file scans.
 
+### Hunk Pre-Sort by File Position
+
+LLMs sometimes emit hunks in reverse or arbitrary order relative to the file (e.g., bottom-of-file changes first, then top-of-file changes). Since the completion engine tracks `search_from` across hunks, out-of-order hunks can cause cascading failures if the search only moves forward.
+
+To handle this, the engine performs a pre-sort pass before processing hunks:
+
+- For each hunk, the first non-blank context or removal line is extracted and searched for in the original file using **Strict (exact) matching only**.
+- If exactly one exact match is found, that line index is recorded as the hunk's estimated file position. If zero or multiple matches are found, the position is `None` (ambiguous), and the hunk retains its original relative order.
+- If any hunk's estimated position is less than the previous hunk's (i.e., out of order), a stable sort by position is performed. Hunks without a position estimate receive `usize::MAX` as their sort key, pushing them to the end while preserving their relative order among themselves.
+- If hunks are already in ascending order, the sort is a no-op (zero overhead for the common case).
+
+This approach is safe by construction: only hunks with unambiguous Strict anchors are reordered. When duplicate code blocks exist (multiple exact matches), the presort declines to reorder, and the existing proximity scoring and adjacent hint disambiguation resolve the correct position during normal processing.
+
+### Full-File Search with Proximity Scoring
+
+The search for hunk context scans the entire original file (from index 0 through the end), not just forward from `search_from`. This ensures that out-of-order hunks can still be matched when presort cannot determine their positions (e.g., all position estimates are `None` due to ambiguous matches).
+
+Safety is maintained through proximity scoring: `score_candidate` uses `abs_diff(candidate_index, search_from)` as a negative score component, so matches near the expected position are strongly preferred. For Resilient and Fuzzy tiers, the `MAX_PROXIMITY_FOR_LENIENT` window (1,000 lines, or 5,000 for the first hunk) filters out candidates that are too far in either direction. Strict tier has no proximity limit since exact matches carry high confidence.
+
 ## Partial Hunk Application
 
 When a `FILE_PATCH` directive contains multiple hunks, the engine applies them incrementally rather than as an all-or-nothing operation. This ensures that a single malformed or unmatchable hunk does not prevent other valid hunks in the same patch from being applied.
