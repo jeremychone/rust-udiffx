@@ -45,7 +45,9 @@ When multiple candidates are found within the same tier, a scoring system determ
 
 The search for hunk context begins at the end of the previously applied hunk (tracking cumulative line-count deltas). Proximity to this expected location is a key factor in scoring to prevent matching similar code blocks far apart in a file.
 
-Note: For Resilient and Fuzzy tiers, a proximity limit is enforced to prevent excessive drift and maintain performance. This limit is set to 1,000 lines from the expected position, except for the first hunk where a window of up to 5,000 lines is allowed to facilitate anchoring in large files.
+Note: For Resilient and Fuzzy tiers, a proximity limit is enforced to prevent excessive drift and maintain performance. This limit is set to 1,000 lines from the expected position (in either direction), except for the first hunk where a window of up to 5,000 lines is allowed to facilitate anchoring in large files.
+
+Note: The search scans the entire file (both before and after the expected position) at all tiers, relying on proximity scoring to prefer the nearest match. This ensures that out-of-order hunks (where the LLM emits hunks in reverse file order) can still be matched when pre-sort positioning fails. For Strict tier, there is no proximity limit; for Resilient and Fuzzy tiers, the proximity window above applies in both directions.
 
 ### Exact Whitespace Count
 

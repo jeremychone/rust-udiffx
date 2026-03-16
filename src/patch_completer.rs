@@ -726,8 +726,9 @@ fn search_candidates_for_tier(
 ) -> Vec<CandidateMatch> {
 	let mut candidates: Vec<CandidateMatch> = Vec::new();
 
-	for i in search_from..=orig_lines.len() {
-		// -- Proximity Check: If we've drifted too far in a lenient tier, skip this candidate.
+	for i in 0..=orig_lines.len() {
+		// -- Proximity Check: For lenient tiers, skip candidates that are too far
+		// from the expected position (in either direction).
 		let distance = i.abs_diff(search_from);
 		let max_proximity = if search_from == 0 {
 			5000
