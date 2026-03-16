@@ -305,10 +305,20 @@ fn estimate_hunk_position<'a>(orig_lines: &[&str], hunk_lines: &[&'a str]) -> Op
 		Some(content)
 	})?;
 
-	// Search for an exact match in the original lines
-	orig_lines
-		.iter()
-		.position(|orig_line| *orig_line == first_content)
+	// Search for an exact match in the original lines.
+	// If there are multiple exact matches, return None (ambiguous position)
+	// to avoid incorrect reordering when duplicate code blocks exist.
+	let mut found_idx: Option<usize> = None;
+	for (i, orig_line) in orig_lines.iter().enumerate() {
+		if *orig_line == first_content {
+			if found_idx.is_some() {
+				// Multiple matches: ambiguous, bail out
+				return None;
+			}
+			found_idx = Some(i);
+		}
+	}
+	found_idx
 }
 
 /// Pre-sorts raw hunks by their estimated file position when out-of-order hunks are detected.
