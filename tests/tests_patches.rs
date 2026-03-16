@@ -392,7 +392,15 @@ fn test_patches_test_18() -> Result<()> {
 	let content = run_test_scenario("test-18-out-of-order", false)?;
 
 	// -- Check
-	println!("->> {content}");
+	// Hunk 1 (file-order): additions after m_useFirstHitpointForDrag block
+	assert_contains!(content, "m_dragStartedCallback");
+	// Hunk 2 (file-order): additions after setBothPlanesChangedCallback
+	assert_contains!(content, "setDragStartedCallback");
+	assert_contains!(content, "setDragEndedCallback");
+	// Original content still present
+	assert_contains!(content, "setHitThreshold");
+	assert_contains!(content, "setBothPlanesChangedCallback");
+
 	Ok(())
 }
 // region:    --- Support

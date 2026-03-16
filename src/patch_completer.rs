@@ -239,6 +239,10 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 	let mut total_delta: isize = 0;
 	let mut search_from: usize = 0;
 
+	// -- Pre-sort hunks by file position to handle out-of-order LLM output.
+	// Only reorder when hunks have confident (Strict) position estimates and are out of order.
+	let raw_hunks = presort_hunks_by_position(&orig_lines, raw_hunks);
+
 	// Emit any non-hunk prefix lines (e.g. file headers)
 	for pline in &non_hunk_prefix {
 		completed_patch.push_str(pline);
@@ -263,7 +267,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 
 		// Update state for next hunk
 		search_from = old_start + old_count.saturating_sub(1) - 1;
-		total_delta += new_count as isize - old_count as isize;
+	total_delta += new_count as isize - old_count as isize;
 
 		// Standard Unified Diff: @@ -start,len +start,len @@
 		completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"));
@@ -285,6 +289,75 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 }
 
 // region:    --- Support
+
+/// Estimates the file position of a hunk by finding the first context/removal line
+/// using Strict (exact) matching. Returns `None` if no strict match is found.
+fn estimate_hunk_position<'a>(orig_lines: &[&str], hunk_lines: &[&'a str]) -> Option<usize> {
+	// Extract the first non-blank context or removal line content
+	let first_content = hunk_lines.iter().find_map(|l| {
+		if l.starts_with('+') {
+			return None;
+		}
+		let content = if l.len() > 1 { &l[1..] } else { "" };
+		if content.trim().is_empty() {
+			return None;
+		}
+		Some(content)
+	})?;
+
+	// Search for an exact match in the original lines
+	orig_lines
+		.iter()
+		.position(|orig_line| *orig_line == first_content)
+}
+
+/// Pre-sorts raw hunks by their estimated file position when out-of-order hunks are detected.
+/// Uses only Strict matching for position estimation to avoid false anchoring.
+/// Hunks without a confident position estimate keep their original relative order (pushed to end).
+fn presort_hunks_by_position<'a>(orig_lines: &[&str], raw_hunks: Vec<Vec<&'a str>>) -> Vec<Vec<&'a str>> {
+	if raw_hunks.len() <= 1 {
+		return raw_hunks;
+	}
+
+	// Estimate positions for each hunk
+	let positions: Vec<Option<usize>> = raw_hunks
+		.iter()
+		.map(|hunk_lines| estimate_hunk_position(orig_lines, hunk_lines))
+		.collect();
+
+	// Check if hunks are already in ascending order (considering only those with positions)
+	let mut is_ordered = true;
+	let mut last_pos: Option<usize> = None;
+	for pos in &positions {
+		if let Some(p) = pos {
+			if let Some(lp) = last_pos {
+				if *p < lp {
+					is_ordered = false;
+					break;
+				}
+			}
+			last_pos = Some(*p);
+		}
+	}
+
+	if is_ordered {
+		return raw_hunks;
+	}
+
+	// Stable sort by position; hunks without a position get usize::MAX
+	let mut indexed: Vec<(usize, Vec<&'a str>, usize)> = raw_hunks
+		.into_iter()
+		.enumerate()
+		.map(|(i, hunk)| {
+			let sort_key = positions[i].unwrap_or(usize::MAX);
+			(i, hunk, sort_key)
+		})
+		.collect();
+
+	indexed.sort_by_key(|(orig_idx, _, sort_key)| (*sort_key, *orig_idx));
+
+	indexed.into_iter().map(|(_, hunk, _)| hunk).collect()
+}
 
 /// Extracts the content (without prefix) of the last context/removal line in a hunk.
 fn last_context_or_removal_content<'a>(hunk: &[&'a str]) -> Option<&'a str> {
