@@ -1022,6 +1022,20 @@ fn search_candidates_for_tier(
 						matches = false;
 						break;
 					}
+				} else if is_bottom_anchor {
+					// Non-first bottom anchor: already verified consecutively when
+					// the first bottom anchor was matched. Record match and advance.
+					let target = i + orig_off;
+					if target < orig_lines.len() && line_matches(orig_lines[target], p_line, tier) {
+						if orig_lines[target] == p_line {
+							current_exact_ws_count += 1;
+						}
+						current_matches.push((hl_idx, target));
+						orig_off += 1;
+					} else {
+						matches = false;
+						break;
+					}
 				} else if line_matches(orig_line, p_line, tier) {
 					// Track whether this was an exact whitespace match (no normalization needed)
 					if orig_line == p_line {
