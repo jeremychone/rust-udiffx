@@ -159,7 +159,8 @@ fn collect_raw_hunks(patch_text: &str) -> Vec<Vec<&str>> {
 
 			let has_add = hunk_lines.iter().any(|l| l.starts_with('+'));
 			let has_remove = hunk_lines.iter().any(|l| l.starts_with('-'));
-			let is_actionable = has_add || has_remove;
+			let has_tilde = hunk_lines.iter().any(|l| l.trim() == "~");
+			let is_actionable = has_add || has_remove || has_tilde;
 
 			if is_actionable {
 				raw_hunks.push(hunk_lines);
