@@ -1,7 +1,7 @@
 use super::TestResult;
 use simple_fs::SPath;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn list_test_files_dirs() -> TestResult<Vec<SPath>> {

@@ -65,7 +65,7 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						String::new()
 					};
 
-					let (new_content, tier, hunk_errors) =
+	let (new_content, tier, hunk_errors, total_hunk_count) =
 						apply_patch_incremental(&file_path, &original_content, &patch_content.content)?;
 					info.match_tier = tier;
 					info.error_hunks = hunk_errors;
@@ -80,6 +80,14 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 
 					fs::write(&full_path, new_content)
 						.map_err(|err| Error::io_write_file(full_path.to_string(), err))?;
+
+					// If some hunks failed, return an error so success stays false
+					if !info.error_hunks.is_empty() {
+						let failed = info.error_hunks.len();
+						return Err(Error::custom(format!(
+							"{failed} of {total_hunk_count} hunks failed to apply for '{file_path}'"
+						)));
+					}
 				}
 
 				FileDirective::Append { file_path, content } => {
@@ -220,7 +228,7 @@ fn apply_patch_incremental(
 	file_path: &str,
 	original: &str,
 	patch_raw: &str,
-) -> Result<(String, Option<MatchTier>, Vec<HunkError>)> {
+) -> Result<(String, Option<MatchTier>, Vec<HunkError>, usize)> {
 	let original_had_crlf = original.contains("\r\n");
 
 	let original_lf = if original_had_crlf {
@@ -245,12 +253,13 @@ fn apply_patch_incremental(
 	// If only one hunk, use the all-or-nothing path for simplicity
 	if raw_hunks.len() <= 1 {
 		let (new_content, tier) = apply_patch(file_path, original, patch_raw)?;
-		return Ok((new_content, tier, Vec::new()));
+		return Ok((new_content, tier, Vec::new(), raw_hunks.len()));
 	}
 
 	let mut max_tier: Option<MatchTier> = None;
 	let mut hunk_errors: Vec<HunkError> = Vec::new();
 	let mut applied_count: usize = 0;
+	let total_hunk_count = raw_hunks.len();
 
 	for raw_hunk in &raw_hunks {
 		let result: std::result::Result<(String, Option<MatchTier>), String> = (|| {
@@ -295,5 +304,5 @@ fn apply_patch_incremental(
 		working_content = working_content.replace('\n', "\r\n");
 	}
 
-	Ok((working_content, max_tier, hunk_errors))
+	Ok((working_content, max_tier, hunk_errors, total_hunk_count))
 }
