@@ -18,6 +18,200 @@ fn test_patch_completer_complete_simple() -> Result<()> {
 	Ok(())
 }
 
+// -- Tilde Range-Remove Tests
+
+/// Verifies basic `~` range-remove: top 2 anchors, tilde, bottom 2 anchors.
+/// Lines between anchors should be removed.
+#[test]
+fn test_patch_completer_complete_tilde_basic_range_remove() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\n";
+	// Remove lines 2-7: top anchors are lines 2,3; bottom anchors are lines 6,7
+	let patch = "@@\n line 1\n-line 2\n-line 3\n~\n-line 6\n-line 7\n line 8\n";
+
+	// -- Exec
+	let (completed, _tier) = complete(original, patch)?;
+
+	// -- Check
+	// All lines 2 through 7 should be removed
+	assert!(completed.contains("-line 2\n"), "line 2 should be removed. Got:\n{completed}");
+	assert!(completed.contains("-line 3\n"), "line 3 should be removed. Got:\n{completed}");
+	assert!(completed.contains("-line 4\n"), "line 4 should be removed (expanded). Got:\n{completed}");
+	assert!(completed.contains("-line 5\n"), "line 5 should be removed (expanded). Got:\n{completed}");
+	assert!(completed.contains("-line 6\n"), "line 6 should be removed. Got:\n{completed}");
+	assert!(completed.contains("-line 7\n"), "line 7 should be removed. Got:\n{completed}");
+	// Context lines should remain
+	assert!(completed.contains(" line 1\n"), "line 1 should be context. Got:\n{completed}");
+	assert!(completed.contains(" line 8"), "line 8 should be context. Got:\n{completed}");
+
+	Ok(())
+}
+
+/// Verifies `~` range-remove with additions after the range.
+#[test]
+fn test_patch_completer_complete_tilde_with_additions() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "header\nold 1\nold 2\nold 3\nold 4\nold 5\nfooter\n";
+	// Remove old 1 through old 5, insert new content
+	let patch = "@@\n header\n-old 1\n-old 2\n~\n-old 4\n-old 5\n+new content A\n+new content B\n footer\n";
+
+	// -- Exec
+	let (completed, _tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("-old 1\n"), "old 1 should be removed");
+	assert!(completed.contains("-old 2\n"), "old 2 should be removed");
+	assert!(completed.contains("-old 3\n"), "old 3 should be removed (expanded)");
+	assert!(completed.contains("-old 4\n"), "old 4 should be removed");
+	assert!(completed.contains("-old 5\n"), "old 5 should be removed");
+	assert!(completed.contains("+new content A\n"), "new content A should be added");
+	assert!(completed.contains("+new content B\n"), "new content B should be added");
+	assert!(completed.contains(" header\n"), "header should be context");
+	assert!(completed.contains(" footer"), "footer should be context");
+
+	Ok(())
+}
+
+/// Verifies multiple `~` ranges in a single hunk.
+#[test]
+fn test_patch_completer_complete_tilde_multiple_ranges() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "A\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\n";
+	// First range: remove B-E (top: B,C; bottom: D,E)
+	// Then context F
+	// Second range: remove G-J (top: G,H; bottom: I,J)
+	let patch = "@@\n A\n-B\n-C\n~\n-D\n-E\n F\n-G\n-H\n~\n-I\n-J\n K\n";
+
+	// -- Exec
+	let (completed, _tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("-B\n"), "B should be removed");
+	assert!(completed.contains("-C\n"), "C should be removed");
+	assert!(completed.contains("-D\n"), "D should be removed");
+	assert!(completed.contains("-E\n"), "E should be removed");
+	assert!(completed.contains("-G\n"), "G should be removed");
+	assert!(completed.contains("-H\n"), "H should be removed");
+	assert!(completed.contains("-I\n"), "I should be removed");
+	assert!(completed.contains("-J\n"), "J should be removed");
+	assert!(completed.contains(" A\n"), "A should be context");
+	assert!(completed.contains(" F\n"), "F should be context");
+	assert!(completed.contains(" K"), "K should be context");
+
+	Ok(())
+}
+
+/// Verifies that `~` not bracketed by enough `-` lines (less than 2 top) fails.
+#[test]
+fn test_patch_completer_complete_tilde_insufficient_top_anchors() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "line 1\nline 2\nline 3\nline 4\n";
+	// Only 1 `-` line above `~` (needs at least 2)
+	let patch = "@@\n line 1\n-line 2\n~\n-line 3\n-line 4\n";
+
+	// -- Exec
+	let result = complete(original, patch);
+
+	// -- Check
+	assert!(result.is_err(), "Should fail with insufficient top anchors");
+	let err = result.unwrap_err();
+	let err_str = err.to_string();
+	assert!(
+		err_str.contains("requires at least 2 removal lines above"),
+		"Error should mention top anchor requirement. Got: {err_str}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that `~` not bracketed by enough `-` lines (less than 2 bottom) fails.
+#[test]
+fn test_patch_completer_complete_tilde_insufficient_bottom_anchors() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "line 1\nline 2\nline 3\nline 4\n";
+	// Only 1 `-` line below `~` (needs at least 2)
+	let patch = "@@\n line 1\n-line 2\n-line 3\n~\n-line 4\n";
+
+	// -- Exec
+	let result = complete(original, patch);
+
+	// -- Check
+	assert!(result.is_err(), "Should fail with insufficient bottom anchors");
+	let err = result.unwrap_err();
+	let err_str = err.to_string();
+	assert!(
+		err_str.contains("requires at least 2 removal lines below"),
+		"Error should mention bottom anchor requirement. Got: {err_str}"
+	);
+
+	Ok(())
+}
+
+/// Verifies that `~` between context lines (not `-` lines) fails validation.
+#[test]
+fn test_patch_completer_complete_tilde_between_context_lines_fails() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "line 1\nline 2\nline 3\nline 4\n";
+	// `~` between context lines, not removal lines
+	let patch = "@@\n line 1\n line 2\n~\n line 3\n line 4\n";
+
+	// -- Exec
+	let result = complete(original, patch);
+
+	// -- Check
+	assert!(result.is_err(), "Should fail when ~ is between context lines");
+
+	Ok(())
+}
+
+/// Verifies that `~` with resilient matching on anchor lines works.
+#[test]
+fn test_patch_completer_complete_tilde_resilient_anchors() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "    start\n    remove A\n    remove B\n    remove C\n    remove D\n    remove E\n    end\n";
+	// Patch anchors have different indentation (resilient matching)
+	let patch = "@@\n start\n-remove A\n-remove B\n~\n-remove D\n-remove E\n end\n";
+
+	// -- Exec
+	let (completed, tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("-    remove A\n"), "remove A should be removed");
+	assert!(completed.contains("-    remove B\n"), "remove B should be removed");
+	assert!(completed.contains("-    remove C\n"), "remove C should be removed (expanded)");
+	assert!(completed.contains("-    remove D\n"), "remove D should be removed");
+	assert!(completed.contains("-    remove E\n"), "remove E should be removed");
+	let tier = tier.ok_or("Should have a tier")?;
+	assert!(
+		tier >= MatchTier::Resilient,
+		"Expected at least Resilient tier for indentation-mismatched anchors"
+	);
+
+	Ok(())
+}
+
+/// Verifies that `~` range correctly handles blank lines in the expanded range.
+#[test]
+fn test_patch_completer_complete_tilde_with_blank_lines_in_range() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = "begin\nfirst\nsecond\n\nfourth\nfifth\nend\n";
+	// Remove first through fifth, including the blank line
+	let patch = "@@\n begin\n-first\n-second\n~\n-fourth\n-fifth\n end\n";
+
+	// -- Exec
+	let (completed, _tier) = complete(original, patch)?;
+
+	// -- Check
+	assert!(completed.contains("-first\n"), "first should be removed");
+	assert!(completed.contains("-second\n"), "second should be removed");
+	assert!(completed.contains("-fourth\n"), "fourth should be removed");
+	assert!(completed.contains("-fifth\n"), "fifth should be removed");
+	// The blank line between second and fourth should also be removed (expanded)
+	assert!(completed.contains("-\n"), "blank line should be removed (expanded). Got:\n{completed}");
+
+	Ok(())
+}
+
 // -- Comment-Only Line Tolerance Tests
 
 /// Verifies that `// some comment` matches `//  some  comment` at Resilient tier

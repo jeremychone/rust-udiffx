@@ -151,6 +151,47 @@ If no actionable hunks are found, and there are no preserved non-hunk prefix lin
 
 This represents a no-op completion result from the completer itself.
 
+## Tilde Range-Remove (`~`)
+
+### Overview
+
+The `~` (tilde) marker provides a shorthand for large consecutive block removals. Instead of listing every removal line, the LLM specifies the top few and bottom few removal lines as anchors, separated by `~`. The engine expands the range by removing all original lines between the top and bottom anchors.
+
+### Syntax Rules
+
+- `~` appears on its own line within a hunk body.
+- At least 2 removal (`-`) lines must appear immediately above the `~`.
+- At least 2 removal (`-`) lines must appear immediately below the `~`.
+- `~` cannot appear between context (` `) or addition (`+`) lines; such usage is a validation error.
+- Multiple `~` markers are allowed within a single hunk, each independently bracketed by removal lines.
+- Addition (`+`) lines may follow the bottom anchor group normally.
+
+### Expansion Logic
+
+When the engine encounters `~` during hunk processing:
+
+1. The top anchor removal lines are matched against the original file using the standard tiered matching (Strict > Resilient > Fuzzy).
+2. The bottom anchor removal lines are located by searching forward from the last matched top-anchor position.
+3. All original lines between the last top anchor and first bottom anchor (exclusive of anchors) are emitted as removal (`-`) lines in the completed patch.
+4. The explicit bottom anchor lines are then emitted as normal removal lines.
+5. `old_count` includes all consumed original lines: explicit top anchors, expanded intermediate lines, and explicit bottom anchors.
+
+### Anchor Matching
+
+The top and bottom anchor `-` lines go through the same tiered matching as normal removal lines. This means anchor lines benefit from Resilient whitespace normalization and Fuzzy case-insensitive matching when needed.
+
+### Ambiguous Anchors
+
+If the bottom anchor sequence appears multiple times within the range, the engine matches the first occurrence searching forward from the last top anchor. This is consistent with the greedy forward search used for normal hunk context matching.
+
+### Interaction with Blank Lines
+
+If the original file has blank lines between the top and bottom anchors, they are consumed as part of the expanded range and emitted as removal lines.
+
+### Validation Errors
+
+If `~` is not properly bracketed by the minimum number of removal lines, the engine produces a clear `PatchCompletion` error for that hunk. Other hunks in the same patch are unaffected (partial hunk application still applies).
+
 ## Performance Considerations
 
 - **Early Exit**: The tiered approach ensures that well-formed, strict patches are processed quickly without ever triggering the more expensive normalization or lowercasing logic of the Resilient and Fuzzy tiers.

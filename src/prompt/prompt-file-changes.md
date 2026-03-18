@@ -83,6 +83,31 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 - Minimize the number of context lines to reduce the chance of mismatch. Include only enough context to uniquely identify the location.
 - Addition lines (`+` prefix) contain the new content to insert.
 
+#### Range-Remove (`~`) shorthand
+
+When removing a large consecutive block of lines, you may use the `~` (tilde) marker instead of listing every single removal line. Place it on its own line between two groups of `-` lines:
+
+- At least **2** removal lines must appear **above** the `~`.
+- At least **2** removal lines must appear **below** the `~`.
+- The engine will remove all original lines between the top and bottom anchor groups (inclusive of the anchors).
+- `~` must only appear between `-` lines. It cannot appear between context (` `) or addition (`+`) lines.
+- Multiple `~` markers are allowed within a single hunk, each independently bracketed by `-` lines.
+- Addition (`+`) lines may follow the bottom anchor group as usual.
+
+Example:
+
+```
+@@
+ context before
+-first line to remove
+-second line to remove
+~
+-second-to-last line to remove
+-last line to remove
++replacement line
+ context after
+```
+
 #### FILE_PATCH format
 
 <FILE_PATCH file_path="path/to/existing_file.ext">

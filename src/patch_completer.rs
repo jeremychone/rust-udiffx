@@ -1,6 +1,21 @@
 use crate::{Error, Result};
 use std::borrow::Cow;
 
+// region:    --- Constants
+
+/// Maximum lines to search away from the expected position for lenient (Resilient/Fuzzy) matches.
+/// This prevents a hunk from "drifting" too far and causing subsequent hunks to fail.
+const MAX_PROXIMITY_FOR_LENIENT: usize = 1000;
+
+/// Minimum length for a patch context fragment to be eligible for suffix matching.
+/// This prevents very short strings (e.g., `"x"`) from false-positive matching.
+const SUFFIX_MATCH_MIN_LEN: usize = 10;
+
+/// Minimum number of `-` lines required above and below a `~` range-remove marker.
+const TILDE_MIN_ANCHOR_LINES: usize = 2;
+
+// endregion: --- Constants
+
 // region:    --- Public Helpers
 
 /// Returns `true` if the raw patch text contains at least one actionable hunk
@@ -75,10 +90,6 @@ pub fn split_raw_hunks(patch_raw: &str) -> Vec<String> {
 
 // region:    --- Types
 
-/// Maximum lines to search away from the expected position for lenient (Resilient/Fuzzy) matches.
-/// This prevents a hunk from "drifting" too far and causing subsequent hunks to fail.
-const MAX_PROXIMITY_FOR_LENIENT: usize = 1000;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MatchTier {
 	Strict,
@@ -101,6 +112,18 @@ struct AdjacentHints<'a> {
 	prev_hint: Option<&'a str>,
 	/// Content of the first context/removal line from the next hunk (without prefix).
 	next_hint: Option<&'a str>,
+}
+
+/// Represents a parsed `~` range-remove segment within a hunk.
+/// The top anchors and bottom anchors are indices into the hunk_lines array.
+#[derive(Debug, Clone)]
+struct TildeRange {
+	/// Indices of the `-` lines above the `~` marker (the top anchors).
+	top_anchor_hl_indices: Vec<usize>,
+	/// Index of the `~` line itself in hunk_lines.
+	tilde_hl_index: usize,
+	/// Indices of the `-` lines below the `~` marker (the bottom anchors).
+	bottom_anchor_hl_indices: Vec<usize>,
 }
 
 // endregion: --- Types
@@ -145,6 +168,77 @@ fn collect_raw_hunks(patch_text: &str) -> Vec<Vec<&str>> {
 	}
 
 	raw_hunks
+}
+
+/// Validates `~` markers in a hunk and returns parsed `TildeRange` entries.
+/// Returns `Err` if any `~` is not properly bracketed by at least `TILDE_MIN_ANCHOR_LINES`
+/// removal lines on each side, or if `~` appears between non-removal lines.
+fn validate_and_parse_tilde_ranges(hunk_lines: &[&str]) -> Result<Vec<TildeRange>> {
+	let tilde_indices: Vec<usize> = hunk_lines
+		.iter()
+		.enumerate()
+		.filter(|(_, l)| l.trim() == "~")
+		.map(|(i, _)| i)
+		.collect();
+
+	if tilde_indices.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let mut ranges = Vec::new();
+
+	for &tilde_idx in &tilde_indices {
+		// Collect consecutive `-` lines immediately above the `~`
+		let mut top_anchors: Vec<usize> = Vec::new();
+		let mut j = tilde_idx;
+		while j > 0 {
+			j -= 1;
+			if hunk_lines[j].starts_with('-') {
+				top_anchors.push(j);
+			} else {
+				break;
+			}
+		}
+		top_anchors.reverse();
+
+		// Collect consecutive `-` lines immediately below the `~`
+		let mut bottom_anchors: Vec<usize> = Vec::new();
+		let mut k = tilde_idx + 1;
+		while k < hunk_lines.len() {
+			if hunk_lines[k].starts_with('-') {
+				bottom_anchors.push(k);
+				k += 1;
+			} else {
+				break;
+			}
+		}
+
+		// Validate minimum anchor counts
+		if top_anchors.len() < TILDE_MIN_ANCHOR_LINES {
+			return Err(Error::patch_completion(format!(
+				"Tilde range-remove `~` at hunk line {} requires at least {} removal lines above, found {}",
+				tilde_idx + 1,
+				TILDE_MIN_ANCHOR_LINES,
+				top_anchors.len()
+			)));
+		}
+		if bottom_anchors.len() < TILDE_MIN_ANCHOR_LINES {
+			return Err(Error::patch_completion(format!(
+				"Tilde range-remove `~` at hunk line {} requires at least {} removal lines below, found {}",
+				tilde_idx + 1,
+				TILDE_MIN_ANCHOR_LINES,
+				bottom_anchors.len()
+			)));
+		}
+
+		ranges.push(TildeRange {
+			top_anchor_hl_indices: top_anchors,
+			tilde_hl_index: tilde_idx,
+			bottom_anchor_hl_indices: bottom_anchors,
+		});
+	}
+
+	Ok(ranges)
 }
 
 // endregion: --- Internal Parsing
@@ -267,7 +361,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 
 		// Update state for next hunk
 		search_from = old_start + old_count.saturating_sub(1) - 1;
-	total_delta += new_count as isize - old_count as isize;
+		total_delta += new_count as isize - old_count as isize;
 
 		// Standard Unified Diff: @@ -start,len +start,len @@
 		completed_patch.push_str(&format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"));
@@ -292,7 +386,7 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 
 /// Estimates the file position of a hunk by finding the first context/removal line
 /// using Strict (exact) matching. Returns `None` if no strict match is found.
-fn estimate_hunk_position<'a>(orig_lines: &[&str], hunk_lines: &[&'a str]) -> Option<usize> {
+fn estimate_hunk_position(orig_lines: &[&str], hunk_lines: &[&str]) -> Option<usize> {
 	// Extract the first non-blank context or removal line content
 	let first_content = hunk_lines.iter().find_map(|l| {
 		if l.starts_with('+') {
@@ -338,16 +432,14 @@ fn presort_hunks_by_position<'a>(orig_lines: &[&str], raw_hunks: Vec<Vec<&'a str
 	// Check if hunks are already in ascending order (considering only those with positions)
 	let mut is_ordered = true;
 	let mut last_pos: Option<usize> = None;
-	for pos in &positions {
-		if let Some(p) = pos {
-			if let Some(lp) = last_pos {
-				if *p < lp {
-					is_ordered = false;
-					break;
-				}
-			}
-			last_pos = Some(*p);
+	for p in positions.iter().flatten() {
+		if let Some(lp) = last_pos
+			&& *p < lp
+		{
+			is_ordered = false;
+			break;
 		}
+		last_pos = Some(*p);
 	}
 
 	if is_ordered {
@@ -410,10 +502,6 @@ fn is_markdown_heading(s: &str) -> bool {
 fn strip_markdown_heading(s: &str) -> &str {
 	s.trim_start_matches('#').trim_start()
 }
-
-/// Minimum length for a patch context fragment to be eligible for suffix matching.
-/// This prevents very short strings (e.g., `"x"`) from false-positive matching.
-const SUFFIX_MATCH_MIN_LEN: usize = 10;
 
 /// Checks if a string looks like a comment marker prefix (e.g., "//", "#", "<!--").
 /// Used by `suffix_match` to reject false positives where the non-matching prefix
@@ -479,6 +567,76 @@ fn normalize_inline_fuzzy(s: &str) -> String {
 		.filter(|c| *c != '`')
 		.map(|c| if c == '"' { '\'' } else { c })
 		.collect()
+}
+
+/// Expands tilde ranges in hunk lines and orig_lines, producing the final set of
+/// removal lines for the expanded range. This is called during `compute_hunk_bounds`
+/// after the initial context/removal matching has located the hunk position.
+///
+/// Returns the expanded hunk lines (with `~` replaced by the intermediate removal lines)
+/// and updates old_count/new_count accordingly.
+fn expand_tilde_ranges(
+	orig_lines: &[&str],
+	hunk_lines: &[&str],
+	tilde_ranges: &[TildeRange],
+	matched_orig_indices: &[(usize, usize)],
+) -> Result<Vec<String>> {
+	if tilde_ranges.is_empty() {
+		return Ok(hunk_lines.iter().map(|l| l.to_string()).collect());
+	}
+
+	let mut expanded: Vec<String> = Vec::new();
+	let mut skip_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
+
+	// For each tilde range, record the hl_indices that are part of the tilde marker itself
+	for range in tilde_ranges {
+		skip_set.insert(range.tilde_hl_index);
+	}
+
+	let mut hl_idx = 0;
+	while hl_idx < hunk_lines.len() {
+		// Check if this is a tilde line
+		if let Some(range) = tilde_ranges.iter().find(|r| r.tilde_hl_index == hl_idx) {
+			// Find the last matched orig index from the top anchors
+			let last_top_anchor_hl = *range.top_anchor_hl_indices.last().unwrap();
+			let last_top_orig_idx = matched_orig_indices
+				.iter()
+				.find(|(h, _)| *h == last_top_anchor_hl)
+				.map(|(_, o)| *o)
+				.ok_or_else(|| {
+					Error::patch_completion(
+						"Tilde range-remove: could not find original index for last top anchor line",
+					)
+				})?;
+
+			// Find the first matched orig index from the bottom anchors
+			let first_bottom_anchor_hl = *range.bottom_anchor_hl_indices.first().unwrap();
+			let first_bottom_orig_idx = matched_orig_indices
+				.iter()
+				.find(|(h, _)| *h == first_bottom_anchor_hl)
+				.map(|(_, o)| *o)
+				.ok_or_else(|| {
+					Error::patch_completion(
+						"Tilde range-remove: could not find original index for first bottom anchor line",
+					)
+				})?;
+
+			// Emit removal lines for all original lines between top and bottom anchors
+			// (exclusive of the anchors themselves, which are already in hunk_lines as `-` lines)
+			let tmp = (last_top_orig_idx + 1)..first_bottom_orig_idx;
+			for orig_idx in tmp {
+				expanded.push(format!("-{}", orig_lines[orig_idx]));
+			}
+
+			hl_idx += 1;
+			continue;
+		}
+
+		expanded.push(hunk_lines[hl_idx].to_string());
+		hl_idx += 1;
+	}
+
+	Ok(expanded)
 }
 
 /// Represents a candidate match found during hunk position search.
@@ -736,6 +894,17 @@ fn search_candidates_for_tier(
 ) -> Vec<CandidateMatch> {
 	let mut candidates: Vec<CandidateMatch> = Vec::new();
 
+	// Pre-check: does this hunk contain tilde ranges?
+	let has_tilde = hunk_lines.iter().any(|l| l.trim() == "~");
+
+	// Parse tilde ranges (validation already done in compute_hunk_bounds, so unwrap is safe here
+	// for the purpose of candidate search; but we handle parse failure gracefully).
+	let tilde_ranges = if has_tilde {
+		validate_and_parse_tilde_ranges(hunk_lines).unwrap_or_default()
+	} else {
+		Vec::new()
+	};
+
 	for i in 0..=orig_lines.len() {
 		// -- Proximity Check: For lenient tiers, skip candidates that are too far
 		// from the expected position (in either direction).
@@ -760,7 +929,9 @@ fn search_candidates_for_tier(
 		let mut orig_off = 0; // offset in orig_lines from i
 
 		for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
-			if hl_line.starts_with('+') {
+			if hl_line.starts_with('+') || hl_line.trim() == "~" {
+				// Skip addition lines and tilde markers during initial matching.
+				// Tilde expansion happens later in compute_hunk_bounds.
 				continue;
 			}
 
@@ -777,6 +948,13 @@ fn search_candidates_for_tier(
 					orig_off += 1;
 				}
 			}
+
+			// -- Tilde range handling: if this removal line is a bottom anchor of a tilde range,
+			// we need to search forward in orig_lines to find it (skipping intermediate lines).
+			let is_bottom_anchor = tilde_ranges.iter().any(|r| r.bottom_anchor_hl_indices.contains(&hl_idx));
+
+			let is_first_bottom_anchor =
+				tilde_ranges.iter().any(|r| r.bottom_anchor_hl_indices.first() == Some(&hl_idx));
 
 			if p_line.trim().is_empty() {
 				// If the patch has a blank line...
@@ -798,7 +976,53 @@ fn search_candidates_for_tier(
 			} else if target_idx < orig_lines.len() {
 				let orig_line = orig_lines[target_idx];
 
-				if line_matches(orig_line, p_line, tier) {
+				if is_first_bottom_anchor {
+					// For the first bottom anchor of a tilde range, search forward
+					// from current position to find the matching line.
+					let mut found = false;
+					for search_idx in target_idx..orig_lines.len() {
+						if line_matches(orig_lines[search_idx], p_line, tier) {
+							// Check that remaining bottom anchors also match consecutively
+							let range = tilde_ranges
+								.iter()
+								.find(|r| r.bottom_anchor_hl_indices.first() == Some(&hl_idx))
+								.unwrap();
+							let mut all_match = true;
+							for (offset, &ba_hl_idx) in range.bottom_anchor_hl_indices.iter().enumerate() {
+								let ba_orig_idx = search_idx + offset;
+								if ba_orig_idx >= orig_lines.len() {
+									all_match = false;
+									break;
+								}
+								let ba_line = if hunk_lines[ba_hl_idx].len() > 1 {
+									&hunk_lines[ba_hl_idx][1..]
+								} else {
+									""
+								};
+								if !line_matches(orig_lines[ba_orig_idx], ba_line, tier) {
+									all_match = false;
+									break;
+								}
+							}
+							if all_match {
+								// Account for skipped intermediate lines in orig_off
+								let skipped = search_idx - target_idx;
+								orig_off += skipped;
+								if orig_lines[search_idx] == p_line {
+									current_exact_ws_count += 1;
+								}
+								current_matches.push((hl_idx, search_idx));
+								orig_off += 1;
+								found = true;
+								break;
+							}
+						}
+					}
+					if !found {
+						matches = false;
+						break;
+					}
+				} else if line_matches(orig_line, p_line, tier) {
 					// Track whether this was an exact whitespace match (no normalization needed)
 					if orig_line == p_line {
 						current_exact_ws_count += 1;
@@ -848,6 +1072,9 @@ fn search_candidates_for_tier(
 			let candidate_old_count = {
 				let mut oc: usize = 0;
 				for (hl_idx, hl_line) in hunk_lines.iter().enumerate() {
+					if hl_line.trim() == "~" {
+						continue;
+					}
 					if current_overhang.contains(&hl_idx) || current_skipped.contains(&hl_idx) {
 						continue;
 					}
@@ -864,6 +1091,26 @@ fn search_candidates_for_tier(
 				}
 				// Also count skipped blank orig lines
 				oc += current_skipped_blanks_all.len();
+
+				// Also count intermediate lines consumed by tilde ranges
+				for range in &tilde_ranges {
+					let last_top = range
+						.top_anchor_hl_indices
+						.last()
+						.and_then(|h| current_matches.iter().find(|(hh, _)| hh == h).map(|(_, o)| *o));
+
+					let first_bottom = range
+						.bottom_anchor_hl_indices
+						.first()
+						.and_then(|h| current_matches.iter().find(|(hh, _)| hh == h).map(|(_, o)| *o));
+
+					if let Some(gap) = last_top.zip(first_bottom).and_then(|(last_top, first_bottom)| {
+						(first_bottom > last_top + 1).then_some(first_bottom - last_top - 1)
+					}) {
+						oc += gap;
+					}
+				}
+
 				oc
 			};
 
@@ -893,6 +1140,9 @@ fn compute_hunk_bounds(
 	search_from: usize,
 	hints: &AdjacentHints<'_>,
 ) -> Result<HunkBounds> {
+	// -- Validate tilde ranges before any matching
+	let tilde_ranges = validate_and_parse_tilde_ranges(hunk_lines)?;
+
 	// -- Empty original bootstrapping
 	// When the original content is empty (or only blank lines), auto-convert all
 	// context/removal lines to additions so that a FILE_PATCH against a non-existent
@@ -1026,7 +1276,7 @@ fn compute_hunk_bounds(
 	let best = best.ok_or_else(|| {
 		let context_pattern: Vec<String> = hunk_lines
 			.iter()
-			.filter(|l| l.starts_with(' ') || l.starts_with('-'))
+			.filter(|l| l.starts_with(' ') || l.starts_with('-') || l.trim() == "~")
 			.map(|l| if l.is_empty() { "" } else { &l[1..] }.to_string())
 			.collect();
 
@@ -1045,7 +1295,60 @@ fn compute_hunk_bounds(
 	let matched_orig_indices = best.matched_orig_indices;
 	let skipped_blank_orig_indices = best.skipped_blank_orig_indices;
 
-	// -- Reconstruct final hunk lines and calculate counts
+	// -- Expand tilde ranges if present
+	let expanded_hunk_lines = if !tilde_ranges.is_empty() {
+		let expanded = expand_tilde_ranges(orig_lines, hunk_lines, &tilde_ranges, &matched_orig_indices)?;
+		// Re-parse matched_orig_indices for the expanded lines is not needed;
+		// we handle the expanded lines directly below.
+		Some(expanded)
+	} else {
+		None
+	};
+
+	// If tilde expansion happened, we need to recompute hunk bounds from the expanded lines.
+	// The expanded lines have all `~` replaced with explicit `-` lines from the original.
+	if let Some(ref expanded_lines) = expanded_hunk_lines {
+		// We need to rebuild the hunk from scratch with the expanded lines.
+		// The position (idx) is already determined. We walk the expanded lines
+		// and reconstruct using orig_lines starting at idx.
+		let mut final_hunk_lines = Vec::new();
+		let mut old_count = 0;
+		let mut new_count = 0;
+		let mut orig_off = 0;
+
+		for line in expanded_lines.iter() {
+			if line.starts_with('+') {
+				final_hunk_lines.push(line.clone());
+				new_count += 1;
+			} else if line.starts_with('-') {
+				let target = idx + orig_off;
+				if target < orig_lines.len() {
+					final_hunk_lines.push(format!("-{}", orig_lines[target]));
+					old_count += 1;
+					orig_off += 1;
+				}
+			} else {
+				// Context line (starts with ' ')
+				let target = idx + orig_off;
+				if target < orig_lines.len() {
+					final_hunk_lines.push(format!(" {}", orig_lines[target]));
+					old_count += 1;
+					new_count += 1;
+					orig_off += 1;
+				}
+			}
+		}
+
+		return Ok(HunkBounds {
+			old_start: idx + 1,
+			old_count,
+			new_count,
+			final_hunk_lines,
+			tier: Some(tier),
+		});
+	}
+
+	// -- Reconstruct final hunk lines and calculate counts (non-tilde path)
 	let mut final_hunk_lines = Vec::new();
 	let mut old_count = 0;
 	let mut new_count = 0;
@@ -1101,6 +1404,11 @@ fn compute_hunk_bounds(
 		final_hunk_lines,
 		tier: Some(tier),
 	})
+}
+
+/// Checks whether a raw hunk contains any `~` (tilde range-remove) markers.
+pub fn has_tilde_ranges(hunk_raw: &str) -> bool {
+	hunk_raw.lines().any(|l| l.trim() == "~")
 }
 
 // endregion: --- Support

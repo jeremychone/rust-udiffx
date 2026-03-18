@@ -403,6 +403,32 @@ fn test_patches_test_18() -> Result<()> {
 
 	Ok(())
 }
+
+#[test]
+fn test_patches_test_19_tilde_range() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-19-tilde-range", false)?;
+
+	// -- Check
+	// All old dependencies should be removed
+	assert_not_contains!(content, "dep_a");
+	assert_not_contains!(content, "dep_b");
+	assert_not_contains!(content, "dep_c");
+	assert_not_contains!(content, "dep_d");
+	assert_not_contains!(content, "dep_e");
+	assert_not_contains!(content, "dep_f");
+	assert_not_contains!(content, "dep_g");
+	assert_not_contains!(content, "dep_h");
+	// New dependency should be present
+	assert_contains!(content, "new_dep = \"2.0\"");
+	// Surrounding content should be intact
+	assert_contains!(content, "[dependencies]");
+	assert_contains!(content, "[settings]");
+	assert_contains!(content, "debug = true");
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {

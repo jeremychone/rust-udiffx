@@ -1,0 +1,16 @@
+[config]
+name = "my_project"
+version = "1.0"
+
+[dependencies]
+dep_a = "0.1"
+dep_b = "0.2"
+dep_c = "0.3"
+dep_d = "0.4"
+dep_e = "0.5"
+dep_f = "0.6"
+dep_g = "0.7"
+dep_h = "0.8"
+
+[settings]
+debug = true

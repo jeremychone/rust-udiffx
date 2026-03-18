@@ -1,0 +1,14 @@
+<TEST_FILE_CHANGES>
+<TEST_FILE_PATCH file_path="test-file.txt">
+@@
+ [dependencies]
+-dep_a = "0.1"
+-dep_b = "0.2"
+~
+-dep_g = "0.7"
+-dep_h = "0.8"
++new_dep = "2.0"
+ 
+ [settings]
+</TEST_FILE_PATCH>
+</TEST_FILE_CHANGES>
