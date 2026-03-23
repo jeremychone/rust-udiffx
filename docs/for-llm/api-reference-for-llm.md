@@ -235,17 +235,25 @@ Signature:
 Behavior:
 - Returns the recommended system instructions for an LLM to generate the `FILE_CHANGES` block.
 
-### ApplyChangesStatus / DirectiveStatus
+### ApplyChangesStatus / DirectiveStatus / HunkError
 
 Types:
+- `pub struct HunkError { pub hunk_body: String, pub cause: String }`
 - `pub struct ApplyChangesStatus { pub items: Vec<DirectiveStatus> }`
-- `pub struct DirectiveStatus { pub kind: DirectiveKind, pub success: bool, pub error_msg: Option<String> }`
+- `pub struct DirectiveStatus { pub kind: DirectiveKind, pub success: bool, pub match_tier: Option<MatchTier>, pub error_msg: Option<String>, pub error_hunks: Vec<HunkError> }`
+- `pub enum DirectiveKind { New { file_path: String }, Patch { file_path: String }, Append { file_path: String }, Copy { from_path: String, file_path: String }, Rename { from_path: String, file_path: String }, Delete { file_path: String }, Fail { kind_str: String, file_path: Option<String> } }`
 
 Helpers:
 - `DirectiveStatus::file_path(&self) -> &str`
 - `DirectiveStatus::success(&self) -> bool`
 - `DirectiveStatus::error_msg(&self) -> Option<&str>`
-- `DirectiveStatus::kind(&self) -> &'static str` in `{ "New" | "Patch" | "Rename" | "Delete" | "Fail" }`
+- `DirectiveStatus::kind(&self) -> &'static str` in `{ "New" | "Patch" | "Append" | "Copy" | "Rename" | "Delete" | "Fail" }`
+
+Notes:
+- `match_tier` is populated for patch application when the patch matching/completion logic can report how the hunk matched.
+- `error_hunks` contains per-hunk patch failures, each with the hunk body and a cause string.
+- For `Copy` and `Rename`, `DirectiveStatus::file_path()` returns the destination path.
+- For `Fail`, `DirectiveStatus::file_path()` returns the stored path when available, otherwise `"unknown"`.
 
 ## Recommended LLM output patterns (strict)
 
