@@ -451,6 +451,37 @@ fn test_patches_test_20() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_noop_hunks_do_not_fail() -> Result<()> {
+	// -- Setup & Fixtures
+	let original = r#"async fn run() {
+	match agent_res {
+		Ok(_agent) => {
+			let (redo_ctx, redo_requested) = exec_run(run_args, runtime).await?;
+			self.set_current_redo_ctx(redo_ctx).await;
+		}
+	}
+}
+"#;
+
+	let patch_raw = r#"@@
+ 	match agent_res {
+ 		Ok(_agent) => {
+-			let (redo_ctx, redo_requested) = exec_run(run_args, runtime).await?;
++			let (redo_ctx, redo_requested) = exec_run(run_args, runtime).await?;
+ 			self.set_current_redo_ctx(redo_ctx).await;
+ 		}
+"#;
+
+	// -- Exec
+	let (content, _tier) = apply_patch("src/exec/executor.rs", original, patch_raw)?;
+
+	// -- Check
+	assert_eq!(content, original);
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {

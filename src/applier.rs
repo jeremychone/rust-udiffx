@@ -65,7 +65,7 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						String::new()
 					};
 
-	let (new_content, tier, hunk_errors, total_hunk_count) =
+					let (new_content, tier, hunk_errors, total_hunk_count) =
 						apply_patch_incremental(&file_path, &original_content, &patch_content.content)?;
 					info.match_tier = tier;
 					info.error_hunks = hunk_errors;
@@ -259,6 +259,7 @@ fn apply_patch_incremental(
 	let mut max_tier: Option<MatchTier> = None;
 	let mut hunk_errors: Vec<HunkError> = Vec::new();
 	let mut applied_count: usize = 0;
+	let mut no_op_count: usize = 0;
 	let total_hunk_count = raw_hunks.len();
 
 	for raw_hunk in &raw_hunks {
@@ -280,10 +281,14 @@ fn apply_patch_incremental(
 
 		match result {
 			Ok((new_content, tier)) => {
-				working_content = new_content;
-				applied_count += 1;
-				if let Some(t) = tier {
-					max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
+				if new_content == working_content {
+					no_op_count += 1;
+				} else {
+					working_content = new_content;
+					applied_count += 1;
+					if let Some(t) = tier {
+						max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
+					}
 				}
 			}
 			Err(cause) => {
@@ -295,7 +300,7 @@ fn apply_patch_incremental(
 		}
 	}
 
-	if applied_count == 0 {
+	if applied_count == 0 && no_op_count == 0 {
 		let summary = format!("All {} hunks failed to apply for '{}'", raw_hunks.len(), file_path);
 		return Err(Error::custom(summary));
 	}
