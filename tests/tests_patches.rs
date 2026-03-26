@@ -429,6 +429,28 @@ fn test_patches_test_19_tilde_range() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_20() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-20", false)?;
+
+	// -- Check
+	assert_contains!(
+		content,
+		"- When `dev.spec` is enabled with the default path, the default spec file is `$coder_prompt_dir/dev/spec/spec.md`."
+	);
+	assert_contains!(
+		content,
+		"- Ensures the spec context file exists at the resolved spec file path."
+	);
+	assert_contains!(
+		content,
+		"- Appends the resolved chat path and `plan-*.md` glob to `context_globs_post` when missing (deduped)."
+	);
+
+	Ok(())
+}
+
 // region:    --- Support
 
 fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
