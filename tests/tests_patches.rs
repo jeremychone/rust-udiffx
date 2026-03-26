@@ -432,7 +432,7 @@ fn test_patches_test_19_tilde_range() -> Result<()> {
 #[test]
 fn test_patches_test_20() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-20", false)?;
+	let content = run_test_scenario("test-20-wrapper-lines", false)?;
 
 	// -- Check
 	assert_contains!(

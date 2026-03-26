@@ -171,6 +171,56 @@ fn collect_raw_hunks(patch_text: &str) -> Vec<Vec<&str>> {
 	raw_hunks
 }
 
+/// Collects raw hunk bodies from patch text while ignoring recognized wrapper meta lines.
+///
+/// This is used as a resilience path when wrapper lines like `*** End Patch` appear
+/// inside or after otherwise valid hunks. Unknown `*** ...` lines are preserved.
+fn collect_raw_hunks_sanitized(patch_text: &str) -> Vec<Vec<&str>> {
+	let mut raw_hunks: Vec<Vec<&str>> = Vec::new();
+	let mut lines = patch_text.lines().peekable();
+
+	while let Some(line) = lines.next() {
+		let trimmed = line.trim();
+
+		if is_wrapper_meta_line(trimmed) {
+			continue;
+		}
+
+		if trimmed.starts_with("@@") {
+			let mut hunk_lines = Vec::new();
+			while let Some(next_line) = lines.peek() {
+				let next_trimmed = next_line.trim();
+				if next_trimmed.starts_with("@@") {
+					break;
+				}
+				let next_line = lines.next().unwrap();
+				if is_wrapper_meta_line(next_trimmed) {
+					continue;
+				}
+				hunk_lines.push(next_line);
+			}
+
+			// Strip trailing empty lines that lack a valid diff prefix.
+			// These are artefacts of the raw patch text (e.g. a trailing newline)
+			// and would otherwise be mis-counted as context lines.
+			while hunk_lines.last().is_some_and(|l| l.trim().is_empty()) {
+				hunk_lines.pop();
+			}
+
+			let has_add = hunk_lines.iter().any(|l| l.starts_with('+'));
+			let has_remove = hunk_lines.iter().any(|l| l.starts_with('-'));
+			let has_tilde = hunk_lines.iter().any(|l| l.trim() == "~");
+			let is_actionable = has_add || has_remove || has_tilde;
+
+			if is_actionable {
+				raw_hunks.push(hunk_lines);
+			}
+		}
+	}
+
+	raw_hunks
+}
+
 /// Validates `~` markers in a hunk and returns parsed `TildeRange` entries.
 /// Returns `Err` if any `~` is not properly bracketed by at least `TILDE_MIN_ANCHOR_LINES`
 /// removal lines on each side, or if `~` appears between non-removal lines.
@@ -329,6 +379,17 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 		}
 	}
 
+	// -- If actionable hunks were found but recognized wrapper/meta lines are present,
+	// build a sanitized hunk view as a resilience path. This prevents wrapper artefacts
+	// like `*** End Patch` from remaining inside a collected hunk body and breaking
+	// later matching, while still preserving strict literal behavior when the raw view
+	// already matches successfully.
+	let sanitized_raw_hunks = if patch_raw.lines().any(|line| is_wrapper_meta_line(line.trim())) {
+		Some(collect_raw_hunks_sanitized(&patch_raw))
+	} else {
+		None
+	};
+
 	// -- Second pass: compute adjacent hints and process each hunk.
 	let mut completed_patch = String::new();
 	let mut total_delta: isize = 0;
@@ -344,12 +405,29 @@ pub fn complete(original_content: &str, patch_raw: &str) -> Result<(String, Opti
 		completed_patch.push('\n');
 	}
 
-	for hunk_idx in 0..raw_hunks.len() {
-		// Build adjacent hints for disambiguation
-		let hints = build_adjacent_hints(&raw_hunks, hunk_idx);
+	let hunk_count = raw_hunks.len();
+	for hunk_idx in 0..hunk_count {
+		let raw_hints = build_adjacent_hints(&raw_hunks, hunk_idx);
+		let raw_hunk_lines = &raw_hunks[hunk_idx];
 
-		let hunk_lines = &raw_hunks[hunk_idx];
-		let hunk_bounds = compute_hunk_bounds(&orig_lines, hunk_lines, search_from, &hints)?;
+		let hunk_bounds = match compute_hunk_bounds(&orig_lines, raw_hunk_lines, search_from, &raw_hints) {
+			Ok(bounds) => bounds,
+			Err(raw_err) => {
+				let Some(sanitized_raw_hunks) = &sanitized_raw_hunks else {
+					return Err(raw_err);
+				};
+				if sanitized_raw_hunks.len() != hunk_count {
+					return Err(raw_err);
+				}
+
+				let sanitized_hunk_lines = &sanitized_raw_hunks[hunk_idx];
+				let sanitized_hints = build_adjacent_hints(sanitized_raw_hunks, hunk_idx);
+				match compute_hunk_bounds(&orig_lines, sanitized_hunk_lines, search_from, &sanitized_hints) {
+					Ok(bounds) => bounds,
+					Err(_) => return Err(raw_err),
+				}
+			}
+		};
 		let old_start = hunk_bounds.old_start;
 		let old_count = hunk_bounds.old_count;
 		let new_count = hunk_bounds.new_count;
