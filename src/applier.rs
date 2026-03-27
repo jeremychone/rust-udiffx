@@ -66,7 +66,7 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 					};
 
 					let (new_content, tier, hunk_errors, total_hunk_count) =
-						apply_patch_incremental(&file_path, &original_content, &patch_content.content)?;
+						apply_patch_incremental(&original_content, &patch_content.content)?;
 					info.match_tier = tier;
 					info.error_hunks = hunk_errors;
 
@@ -222,10 +222,9 @@ pub fn apply_patch(file_path: &str, original: &str, patch_raw: &str) -> Result<(
 ///
 /// Returns `(new_content, max_tier, hunk_errors)`.
 /// - If at least one hunk succeeds, returns the updated content with all successful hunks applied.
-/// - If all hunks fail, returns an error.
+/// - If all hunks fail, returns the unchanged content with all failed hunk details.
 /// - `hunk_errors` contains details for each hunk that failed.
 fn apply_patch_incremental(
-	file_path: &str,
 	original: &str,
 	patch_raw: &str,
 ) -> Result<(String, Option<MatchTier>, Vec<HunkError>, usize)> {
@@ -252,14 +251,12 @@ fn apply_patch_incremental(
 
 	// If only one hunk, use the all-or-nothing path for simplicity
 	if raw_hunks.len() <= 1 {
-		let (new_content, tier) = apply_patch(file_path, original, patch_raw)?;
+		let (new_content, tier) = apply_patch("<incremental-single-hunk>", original, patch_raw)?;
 		return Ok((new_content, tier, Vec::new(), raw_hunks.len()));
 	}
 
 	let mut max_tier: Option<MatchTier> = None;
 	let mut hunk_errors: Vec<HunkError> = Vec::new();
-	let mut applied_count: usize = 0;
-	let mut no_op_count: usize = 0;
 	let total_hunk_count = raw_hunks.len();
 
 	for raw_hunk in &raw_hunks {
@@ -281,11 +278,8 @@ fn apply_patch_incremental(
 
 		match result {
 			Ok((new_content, tier)) => {
-				if new_content == working_content {
-					no_op_count += 1;
-				} else {
+				if new_content != working_content {
 					working_content = new_content;
-					applied_count += 1;
 					if let Some(t) = tier {
 						max_tier = Some(max_tier.map(|m| m.max(t)).unwrap_or(t));
 					}
@@ -298,11 +292,6 @@ fn apply_patch_incremental(
 				});
 			}
 		}
-	}
-
-	if applied_count == 0 && no_op_count == 0 {
-		let summary = format!("All {} hunks failed to apply for '{}'", raw_hunks.len(), file_path);
-		return Err(Error::custom(summary));
 	}
 
 	if !CRLF_SAVE_TO_LDF && original_had_crlf {
