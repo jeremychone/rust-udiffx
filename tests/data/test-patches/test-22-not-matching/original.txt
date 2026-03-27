@@ -1,0 +1,11 @@
+So removing that intro made the post tighter, clearer, and more information-led.
+
+### If we still want to preserve that idea
+
+A better place would be:
+
+- a follow-up comment
+- a dev note
+- a later sentence if the post explicitly discusses how the framing got refined
+
+But it should not sit ahead of the core hook.

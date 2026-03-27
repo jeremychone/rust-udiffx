@@ -1,0 +1,27 @@
+<FILE_CHANGES>
+<FILE_PATCH file_path="...">
+@@
+ ### If we still want to preserve that idea
+
+ - a follow-up comment
+ - a dev note
+ - a later sentence if the post explicitly discusses how the framing got refined
+
+ But it should not sit ahead of the core hook.
++
++## Request: Should I post the PRD vs spec LinkedIn post now
++
++### Short answer
++
++No, I would not post it now at 8:51 am Friday.
++
++### Why
++
++- The available performance context for this account suggests LinkedIn timing has been weak so far, especially around morning posting.
++- One recorded LinkedIn post at Monday 8:30am scored 1.
++- Another recent LinkedIn post also scored 1.
++- We do not have evidence here that Friday 8:51 am is a strong slot for this audience.
++- Since this post has a strong idea and clear tension, it is better to avoid spending it on an unproven timing window.
++
+<FILE_PATCH>
+</FILE_CHANGES>

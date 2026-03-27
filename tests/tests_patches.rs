@@ -485,6 +485,18 @@ fn test_patches_test_21() -> Result<()> {
 }
 
 #[test]
+fn test_patches_test_22() -> Result<()> {
+	// -- Exec
+	let content = run_test_scenario("test-22-not-matching", false)?;
+
+	// -- Check
+	println!("->> \n{content}");
+	// assert_contains!(content, "No, I would not post it now at 8:51");
+
+	Ok(())
+}
+
+#[test]
 fn test_patches_noop_hunks_do_not_fail() -> Result<()> {
 	// -- Setup & Fixtures
 	let original = r#"async fn run() {
