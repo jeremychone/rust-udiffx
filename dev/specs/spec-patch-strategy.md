@@ -245,6 +245,7 @@ When a patch contains only one hunk, the engine delegates to the standard all-or
 - The highest match tier encountered across all successfully applied hunks is reported at the directive level.
 - If at least one hunk applies but some fail, the directive is still successful and the partial failures are exposed through `error_hunks`.
 - After patch application, if the resulting file content is unchanged from the original and the target file already exists, the directive is treated as `No changes applied`.
+- For multi-hunk patch directives, structured per-hunk failures are preserved even when all hunks fail. In that case, the directive remains failed, `error_msg` contains the summary, and `error_hunks` contains every failed hunk. This avoids status/reporting mismatches where a caller can see an all-hunks-failed summary but no per-hunk details.
 
 ### Per-Hunk Error Reporting
 
@@ -260,6 +261,7 @@ At the status-model level:
 - `DirectiveStatus.error_hunks` is populated only for patch directives.
 - `DirectiveStatus.match_tier` stores the highest tier used by any successfully applied hunk.
 - `HunkError` contains the raw single-hunk body and the per-hunk failure cause.
+- In the all-hunks-fail case for a multi-hunk patch, `DirectiveStatus.error_hunks` still contains all failed hunks. Callers should treat `error_hunks` as the source of truth for per-hunk reporting, regardless of whether the directive had partial success or total failure.
 
 ### Cross-Directive Continuation
 
