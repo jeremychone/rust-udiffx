@@ -1,0 +1,15 @@
+	pub fn session(&self) -> &Session {
+		self.inner.session()
+	}
+
+	pub fn cancel_tx(&self) -> Option<&CancelTx> {
+		self.inner.cancel_trx.as_ref().map(|trx| trx.tx())
+	}
+
+	pub fn cancel_rx(&self) -> Option<&CancelRx> {
+		self.inner.cancel_trx.as_ref().map(|trx| trx.rx())
+	}
+
+	pub fn file_write_manager(&self) -> &FileWriteManager {
+		self.inner.file_write_manager()
+	}

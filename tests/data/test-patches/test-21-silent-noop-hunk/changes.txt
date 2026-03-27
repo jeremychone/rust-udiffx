@@ -1,0 +1,15 @@
+<TEST_FILE_CHANGES>
+
+<TEST_FILE_PATCH file_path="src/runtime/runtime_impl.rs">
+@@
+ 	pub fn cancel_rx(&self) -> Option<&tokio_util::sync::CancellationToken> {
+ 		self.inner.cancel_trx.as_ref().map(|trx| trx.rx())
+ 	}
++
++	pub fn runtime_ctx(&self) -> Option<&RuntimeCtx> {
++		self.inner.runtime_ctx.as_ref()
++	}
+ }
+</TEST_FILE_PATCH>
+
+</TEST_FILE_CHANGES>
