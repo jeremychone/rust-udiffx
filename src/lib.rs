@@ -28,7 +28,7 @@ pub use prompt::prompt_file_changes;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod for_test {
-	pub use crate::applier::apply_patch;
+	pub use crate::applier::apply_patch_incremental;
 	pub use crate::patch_completer::{complete, has_actionable_hunks, has_tilde_ranges, split_raw_hunks};
 }
 

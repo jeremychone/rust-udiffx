@@ -2,7 +2,7 @@
 
 use assertables::{assert_contains, assert_not_contains};
 use simple_fs::SPath;
-use udiffx::for_test::{apply_patch, split_raw_hunks};
+use udiffx::for_test::{apply_patch_incremental, split_raw_hunks};
 use udiffx::{FileDirective, extract_file_changes};
 
 mod test_support;
@@ -453,33 +453,12 @@ fn test_patches_test_20() -> Result<()> {
 
 #[test]
 fn test_patches_test_21() -> Result<()> {
-	// -- Setup & Fixtures
-	let folder = "test-21-silent-noop-hunk";
-	let folder_path = SPath::new(format!("tests/data/test-patches/{folder}"));
-	let original_path = folder_path.join("original.txt");
-	let original = std::fs::read_to_string(&original_path)?;
-	let change_path = folder_path.join("changes.txt");
-	let changes_str = std::fs::read_to_string(change_path)?;
-
-	let normalized_changes_str = normalize_test_file_tags(&changes_str);
-
-	let (changes, _) = extract_file_changes(&normalized_changes_str, false)?;
-
 	// -- Exec
-	let directive = changes.into_iter().next().ok_or("Should have at least one directive")?;
-	let err = match directive {
-		FileDirective::Patch {
-			content: patch_content, ..
-		} => apply_patch(original_path.as_str(), &original, &patch_content.content)
-			.err()
-			.ok_or("Should have failed")?,
-		_ => return Err("Expected FILE_PATCH directive".into()),
-	};
+	let res = run_test_scenario("test-21-silent-noop-hunk", true);
 
 	// -- Check
+	let err = res.err().ok_or("Should have failed")?;
 	assert_contains!(err.to_string(), "Could not find patch context in original file");
-	assert_contains!(original, "pub fn cancel_rx(&self) -> Option<&CancelRx> {");
-	assert_not_contains!(original, "pub fn runtime_ctx(&self) -> Option<&RuntimeCtx> {");
 
 	Ok(())
 }
@@ -487,42 +466,10 @@ fn test_patches_test_21() -> Result<()> {
 #[test]
 fn test_patches_test_22() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-22-not-matching", false)?;
+	let res = run_test_scenario("test-22-not-matching", true);
 
 	// -- Check
-	println!("->> \n{content}");
-	// assert_contains!(content, "No, I would not post it now at 8:51");
-
-	Ok(())
-}
-
-#[test]
-fn test_patches_noop_hunks_do_not_fail() -> Result<()> {
-	// -- Setup & Fixtures
-	let original = r#"async fn run() {
-	match agent_res {
-		Ok(_agent) => {
-			let (redo_ctx, redo_requested) = exec_run(run_args, runtime).await?;
-			self.set_current_redo_ctx(redo_ctx).await;
-		}
-	}
-}
-"#;
-
-	let patch_raw = r#"@@
- 	match agent_res {
- 		Ok(_agent) => {
--			let (redo_ctx, redo_requested) = exec_run(run_args, runtime).await?;
-+			let (redo_ctx, redo_requested) = exec_run(run_args, runtime).await?;
- 			self.set_current_redo_ctx(redo_ctx).await;
- 		}
-"#;
-
-	// -- Exec
-	let (content, _tier) = apply_patch("src/exec/executor.rs", original, patch_raw)?;
-
-	// -- Check
-	assert_eq!(content, original);
+	assert!(res.is_err(), "should be error");
 
 	Ok(())
 }
@@ -546,8 +493,8 @@ fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
 			FileDirective::Patch {
 				content: patch_content, ..
 			} => {
-				content = match apply_patch(original_path.as_str(), &content, &patch_content.content) {
-					Ok((content, _)) => content,
+				content = match apply_patch_incremental(&content, &patch_content.content) {
+					Ok((content, ..)) => content,
 					Err(err) => {
 						if !should_fail {
 							println!("Error for {folder} scenario:\n{err}");

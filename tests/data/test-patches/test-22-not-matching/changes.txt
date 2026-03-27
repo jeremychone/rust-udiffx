@@ -1,5 +1,5 @@
 <FILE_CHANGES>
-<FILE_PATCH file_path="...">
+<FILE_PATCH file_path="original.txt">
 @@
  ### If we still want to preserve that idea
 
@@ -23,5 +23,5 @@
 +- We do not have evidence here that Friday 8:51 am is a strong slot for this audience.
 +- Since this post has a strong idea and clear tension, it is better to avoid spending it on an unproven timing window.
 +
-<FILE_PATCH>
+</FILE_PATCH>
 </FILE_CHANGES>
