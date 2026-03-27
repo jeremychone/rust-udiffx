@@ -12,7 +12,7 @@ type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tes
 #[test]
 fn test_patches_test_01() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-01-crlf", false)?;
+	let content = run_test_scenario_to_output("test-01-crlf", false)?;
 
 	// -- Check
 	assert_contains!(content, "edition = \"2024\"");
@@ -24,7 +24,7 @@ fn test_patches_test_01() -> Result<()> {
 #[test]
 fn test_patches_test_02() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-02-append", false)?;
+	let content = run_test_scenario_to_output("test-02-append", false)?;
 
 	// -- Check
 	assert!(content.contains("\n\nline 3"));
@@ -35,7 +35,7 @@ fn test_patches_test_02() -> Result<()> {
 #[test]
 fn test_patches_test_03() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-03-no-matching-empty-line", false)?;
+	let content = run_test_scenario_to_output("test-03-no-matching-empty-line", false)?;
 
 	// -- Check
 	assert_contains!(content, "init_profiles_if_missing");
@@ -46,7 +46,7 @@ fn test_patches_test_03() -> Result<()> {
 #[test]
 fn test_patches_test_04() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-04-no-end-line", false)?;
+	let content = run_test_scenario_to_output("test-04-no-end-line", false)?;
 
 	// -- Check
 	assert_contains!(content, " Improve Patch Completer");
@@ -57,7 +57,7 @@ fn test_patches_test_04() -> Result<()> {
 #[test]
 fn test_patches_test_05() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-05-missplaced", false)?;
+	let content = run_test_scenario_to_output("test-05-missplaced", false)?;
 
 	// -- Check
 	assert_contains!(content, "## Request: Ensure Alacritty");
@@ -79,7 +79,7 @@ fn test_patches_test_06() -> Result<()> {
 #[test]
 fn test_patches_test_07() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-07-new-line", false)?;
+	let content = run_test_scenario_to_output("test-07-new-line", false)?;
 
 	// -- Check
 	assert_contains!(content, "## Request: Unified Tool");
@@ -90,7 +90,7 @@ fn test_patches_test_07() -> Result<()> {
 #[test]
 fn test_patches_test_08() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-08-missmatch", false)?;
+	let content = run_test_scenario_to_output("test-08-missmatch", false)?;
 
 	// -- Check
 	assert_contains!(content, "WorkConfirm(Id), WorkCancel(Id), Run(RunArgs),");
@@ -117,7 +117,7 @@ fn test_patches_test_08() -> Result<()> {
 #[test]
 fn test_patches_test_09() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-09-fuzzy-ticks", false)?;
+	let content = run_test_scenario_to_output("test-09-fuzzy-ticks", false)?;
 
 	// -- Check
 	assert_contains!(content, "**Stage Management**");
@@ -134,7 +134,7 @@ fn test_patches_test_09() -> Result<()> {
 #[test]
 fn test_patches_test_10() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-10", false)?;
+	let content = run_test_scenario_to_output("test-10", false)?;
 
 	// -- Check
 	assert_contains!(content, "local function sort_files_by_mtime");
@@ -145,7 +145,7 @@ fn test_patches_test_10() -> Result<()> {
 #[test]
 fn test_patches_test_11() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-11-append-with-empty-surround", false)?;
+	let content = run_test_scenario_to_output("test-11-append-with-empty-surround", false)?;
 
 	// -- Check
 	assert_contains!(content, "line 3");
@@ -164,7 +164,7 @@ fn test_patches_test_11() -> Result<()> {
 #[test]
 fn test_patches_test_12() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-12-append-with-white-end-surround", false)?;
+	let content = run_test_scenario_to_output("test-12-append-with-white-end-surround", false)?;
 
 	// -- Check
 	assert_contains!(content, "line 3");
@@ -176,7 +176,7 @@ fn test_patches_test_12() -> Result<()> {
 #[test]
 fn test_patches_test_13() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-13-append-trailing-blank-context", false)?;
+	let content = run_test_scenario_to_output("test-13-append-trailing-blank-context", false)?;
 
 	// -- Check
 	assert_eq!(content, "line 3\nline 4\n");
@@ -187,7 +187,7 @@ fn test_patches_test_13() -> Result<()> {
 #[test]
 fn test_patches_test_14() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-14-removal-suffix", false)?;
+	let content = run_test_scenario_to_output("test-14-removal-suffix", false)?;
 
 	// -- Check
 	assert_contains!(content, "create_async_connection_pool");
@@ -210,7 +210,7 @@ fn test_patches_test_14() -> Result<()> {
 #[test]
 fn test_patches_test_15() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-15", false)?;
+	let content = run_test_scenario_to_output("test-15", false)?;
 
 	// -- Check
 	assert_contains!(content, "outputMeshes");
@@ -389,7 +389,7 @@ fn test_patches_test_17_all_hunks_fail() -> Result<()> {
 #[test]
 fn test_patches_test_18() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-18-out-of-order", false)?;
+	let content = run_test_scenario_to_output("test-18-out-of-order", false)?;
 
 	// -- Check
 	// Hunk 1 (file-order): additions after m_useFirstHitpointForDrag block
@@ -407,7 +407,7 @@ fn test_patches_test_18() -> Result<()> {
 #[test]
 fn test_patches_test_19_tilde_range() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-19-tilde-range", false)?;
+	let content = run_test_scenario_to_output("test-19-tilde-range", false)?;
 
 	// -- Check
 	// All old dependencies should be removed
@@ -432,7 +432,7 @@ fn test_patches_test_19_tilde_range() -> Result<()> {
 #[test]
 fn test_patches_test_20() -> Result<()> {
 	// -- Exec
-	let content = run_test_scenario("test-20-wrapper-lines", false)?;
+	let content = run_test_scenario_to_output("test-20-wrapper-lines", false)?;
 
 	// -- Check
 	assert_contains!(
@@ -476,7 +476,7 @@ fn test_patches_test_22() -> Result<()> {
 
 // region:    --- Support
 
-fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
+fn run_test_scenario(folder: &str, should_fail: bool) -> Result<Vec<udiffx::ApplyPatchIncrementalData>> {
 	let folder_path = SPath::new(format!("tests/data/test-patches/{folder}"));
 	let original_path = folder_path.join("original.txt");
 	let original = std::fs::read_to_string(&original_path)?;
@@ -487,14 +487,15 @@ fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
 
 	let (changes, _) = extract_file_changes(&normalized_changes_str, false)?;
 	let mut content = original;
+	let mut results = Vec::new();
 
 	for change in changes {
 		match change {
 			FileDirective::Patch {
 				content: patch_content, ..
 			} => {
-				content = match apply_patch_incremental(&content, &patch_content.content) {
-					Ok((content, ..)) => content,
+				let apply_data = match apply_patch_incremental(&content, &patch_content.content) {
+					Ok(apply_data) => apply_data,
 					Err(err) => {
 						if !should_fail {
 							println!("Error for {folder} scenario:\n{err}");
@@ -502,12 +503,22 @@ fn run_test_scenario(folder: &str, should_fail: bool) -> Result<String> {
 						return Err(format!("scenario {folder} failed\n{err}").into());
 					}
 				};
+				content = apply_data.new_content.clone();
+				results.push(apply_data);
 			}
 			_ => return Err("Only FILE_PATCH is supported in this in-memory test for now".into()),
 		}
 	}
 
-	Ok(content)
+	Ok(results)
+}
+
+fn run_test_scenario_to_output(folder: &str, should_fail: bool) -> Result<String> {
+	let apply_data = run_test_scenario(folder, should_fail)?
+		.into_iter()
+		.next()
+		.ok_or("Should have at least one apply result")?;
+	Ok(apply_data.new_content)
 }
 
 /// Normalizes `TEST_FILE_*` tags to `FILE_*` tags so test fixture files

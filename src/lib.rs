@@ -12,6 +12,7 @@ mod files_context;
 mod patch_completer;
 
 pub use applier::apply_file_changes;
+pub use applier::ApplyPatchIncrementalData;
 pub use apply_changes_status::*;
 pub use error::*;
 pub use extract::*;

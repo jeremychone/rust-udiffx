@@ -27,10 +27,10 @@ fn test_applier_apply_patch_incremental_noop_hunks_do_not_fail() -> Result<()> {
 "#;
 
 	// -- Exec
-	let (content, _mt, _error_hunks, _num) = apply_patch_incremental(original, patch_raw)?;
+	let data = apply_patch_incremental(original, patch_raw)?;
 
 	// -- Check
-	assert_eq!(content, original);
+	assert_eq!(data.new_content, original);
 
 	Ok(())
 }

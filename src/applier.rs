@@ -8,6 +8,14 @@ use std::fs;
 
 const CRLF_SAVE_TO_LDF: bool = true;
 
+#[derive(Debug, Clone)]
+pub struct ApplyPatchIncrementalData {
+	pub new_content: String,
+	pub max_tier: Option<MatchTier>,
+	pub hunk_errors: Vec<HunkError>,
+	pub total_hunks: usize,
+}
+
 /// Executes the file changes defined in `AipFileChanges` relative to `base_dir`.
 pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges) -> Result<ApplyChangesStatus> {
 	let base_dir = base_dir.into();
@@ -65,12 +73,11 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						String::new()
 					};
 
-					let (new_content, tier, hunk_errors, total_hunk_count) =
-						apply_patch_incremental(&original_content, &patch_content.content)?;
-					info.match_tier = tier;
-					info.error_hunks = hunk_errors;
+					let apply_data = apply_patch_incremental(&original_content, &patch_content.content)?;
+					info.match_tier = apply_data.max_tier;
+					info.error_hunks = apply_data.hunk_errors;
 
-					if new_content == original_content && full_path.exists() {
+					if apply_data.new_content == original_content && full_path.exists() {
 						return Err(Error::apply_no_changes(file_path));
 					}
 
@@ -78,14 +85,15 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 						ensure_file_dir(&full_path).map_err(Error::simple_fs)?;
 					}
 
-					fs::write(&full_path, new_content)
+					fs::write(&full_path, apply_data.new_content)
 						.map_err(|err| Error::io_write_file(full_path.to_string(), err))?;
 
 					// If some hunks failed, return an error so success stays false
 					if !info.error_hunks.is_empty() {
 						let failed = info.error_hunks.len();
 						return Err(Error::custom(format!(
-							"{failed} of {total_hunk_count} hunks failed to apply for '{file_path}'"
+							"{failed} of {} hunks failed to apply for '{file_path}'",
+							apply_data.total_hunks
 						)));
 					}
 				}
@@ -186,14 +194,11 @@ pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges)
 
 /// Applies a patch incrementally, hunk by hunk, allowing partial success.
 ///
-/// Returns `(new_content, max_tier, hunk_errors, total_hunks)`.
+/// Returns `ApplyPatchIncrementalData`.
 /// - If at least one hunk succeeds, returns the updated content with all successful hunks applied.
 /// - If all hunks fail, returns the unchanged content with all failed hunk details.
 /// - `hunk_errors` contains details for each hunk that failed.
-pub fn apply_patch_incremental(
-	original: &str,
-	patch_raw: &str,
-) -> Result<(String, Option<MatchTier>, Vec<HunkError>, usize)> {
+pub fn apply_patch_incremental(original: &str, patch_raw: &str) -> Result<ApplyPatchIncrementalData> {
 	let original_had_crlf = original.contains("\r\n");
 
 	let original_lf = if original_had_crlf {
@@ -218,7 +223,12 @@ pub fn apply_patch_incremental(
 	// If only one hunk, use the all-or-nothing path for simplicity
 	if raw_hunks.len() <= 1 {
 		let (new_content, tier) = apply_patch("<incremental-single-hunk>", original, patch_raw)?;
-		return Ok((new_content, tier, Vec::new(), raw_hunks.len()));
+		return Ok(ApplyPatchIncrementalData {
+			new_content,
+			max_tier: tier,
+			hunk_errors: Vec::new(),
+			total_hunks: raw_hunks.len(),
+		});
 	}
 
 	let mut max_tier: Option<MatchTier> = None;
@@ -264,7 +274,12 @@ pub fn apply_patch_incremental(
 		working_content = working_content.replace('\n', "\r\n");
 	}
 
-	Ok((working_content, max_tier, hunk_errors, total_hunk_count))
+	Ok(ApplyPatchIncrementalData {
+		new_content: working_content,
+		max_tier,
+		hunk_errors,
+		total_hunks: total_hunk_count,
+	})
 }
 
 /// Applies a patch content to an original string, handling potential patch completion.
