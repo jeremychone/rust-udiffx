@@ -476,7 +476,31 @@ fn test_patches_test_22() -> Result<()> {
 
 // region:    --- Support
 
-fn run_test_scenario(folder: &str, should_fail: bool) -> Result<Vec<udiffx::ApplyPatchIncrementalData>> {
+#[derive(Debug)]
+struct RunTestScenarioData {
+	results: Vec<udiffx::ApplyPatchIncrementalData>,
+}
+
+#[allow(unused)]
+impl RunTestScenarioData {
+	fn first_content(&self) -> Option<&str> {
+		self.results.first().map(|data| data.new_content.as_str())
+	}
+
+	fn total_patch_hunks(&self) -> usize {
+		self.results.iter().map(|data| data.total_hunks).sum()
+	}
+
+	fn total_error_hunks(&self) -> usize {
+		self.results.iter().map(|data| data.hunk_errors.len()).sum()
+	}
+
+	fn all_error_hunks(&self) -> Vec<&udiffx::HunkError> {
+		self.results.iter().flat_map(|data| data.hunk_errors.iter()).collect()
+	}
+}
+
+fn run_test_scenario(folder: &str, should_fail: bool) -> Result<RunTestScenarioData> {
 	let folder_path = SPath::new(format!("tests/data/test-patches/{folder}"));
 	let original_path = folder_path.join("original.txt");
 	let original = std::fs::read_to_string(&original_path)?;
@@ -510,15 +534,13 @@ fn run_test_scenario(folder: &str, should_fail: bool) -> Result<Vec<udiffx::Appl
 		}
 	}
 
-	Ok(results)
+	Ok(RunTestScenarioData { results })
 }
 
 fn run_test_scenario_to_output(folder: &str, should_fail: bool) -> Result<String> {
-	let apply_data = run_test_scenario(folder, should_fail)?
-		.into_iter()
-		.next()
-		.ok_or("Should have at least one apply result")?;
-	Ok(apply_data.new_content)
+	let scenario_data = run_test_scenario(folder, should_fail)?;
+	let first_content = scenario_data.first_content().ok_or("Should have at least one apply result")?;
+	Ok(first_content.to_string())
 }
 
 /// Normalizes `TEST_FILE_*` tags to `FILE_*` tags so test fixture files
