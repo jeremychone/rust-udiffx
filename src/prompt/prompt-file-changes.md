@@ -57,6 +57,8 @@ Modifies an existing file using a simplified, numberless unified diff format.
 
 **Important: Use the `~` shorthand for large consecutive removals to keep patches concise.**
 
+**Important: Do not include "no-op" hunks that consist only of context lines without any additions or removals.**
+
 <FILE_PATCH file_path="path/to/file.ext">
 _patch_format_
 </FILE_PATCH>
@@ -84,6 +86,7 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 - Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file. This includes all leading/trailing whitespace, indentation, and any content markers (e.g., Markdown bullet points like `-`, `*`, or `+`, and numbered list markers like `1.`). Any deviation, even a single space or tab, will cause the patch to fail.
 - **Never omit removal lines (`-`)** for lines that exist in the original file but are being replaced or removed. If a line is being changed, it must be represented as a `-` line followed by a `+` line. Do not skip lines within the scope of a hunk.
 - **Use the `~` (tilde) marker** for large consecutive removals to avoid unnecessary verbosity (see below).
+- **Avoid no-op hunks:** Every hunk must contain at least one addition (`+`) or removal (`-`). Do not include hunks that only contain context lines.
 - Minimize the number of context lines to reduce the chance of mismatch. Include only enough context to uniquely identify the location.
 - Addition lines (`+` prefix) contain the new content to insert.
 
