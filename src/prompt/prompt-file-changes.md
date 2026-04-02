@@ -30,6 +30,7 @@ IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and ca
 - Do not invent files or paths.
 - The code fence language (e.g., `rust`, `ts`, `python`) is for syntax highlighting only.
 - Make sure and triple check that the file patch hunk body surround lines or remove lines match exactly.
+- **Never remove or alter existing comments** (except if explicitly asked by the user). Preserve them verbatim.
 
 ### FILE_NEW
 
@@ -53,6 +54,8 @@ _content_to_append_
 ### FILE_PATCH
 
 Modifies an existing file using a simplified, numberless unified diff format.
+
+**Important: Use the `~` shorthand for large consecutive removals to keep patches concise.**
 
 <FILE_PATCH file_path="path/to/file.ext">
 _patch_format_
@@ -80,12 +83,15 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 - Every line must begin with one of these three prefix characters. There are no exceptions.
 - Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file. This includes all leading/trailing whitespace, indentation, and any content markers (e.g., Markdown bullet points like `-`, `*`, or `+`, and numbered list markers like `1.`). Any deviation, even a single space or tab, will cause the patch to fail.
 - **Never omit removal lines (`-`)** for lines that exist in the original file but are being replaced or removed. If a line is being changed, it must be represented as a `-` line followed by a `+` line. Do not skip lines within the scope of a hunk.
+- **Use the `~` (tilde) marker** for large consecutive removals to avoid unnecessary verbosity (see below).
 - Minimize the number of context lines to reduce the chance of mismatch. Include only enough context to uniquely identify the location.
 - Addition lines (`+` prefix) contain the new content to insert.
 
 #### Range-Remove (`~`) shorthand
 
-When removing a large consecutive block of lines, you may use the `~` (tilde) marker instead of listing every single removal line. Place it on its own line between two groups of `-` lines:
+**Important: Favor this technique whenever removing more than 4-5 consecutive lines to keep the patch concise and resilient.**
+
+When removing a large consecutive block of lines, use the `~` (tilde) marker instead of listing every single removal line. Place it on its own line between two groups of `-` lines:
 
 - At least **2** removal lines must appear **above** the `~`.
 - At least **2** removal lines must appear **below** the `~`.
@@ -155,12 +161,10 @@ println!("Hello from hello.rs");
 @@
 +mod hello;
 
-- fn main() {
-
-* println!("Old Message");
-
-- hello::hello();
-  }
+ fn main() {
+- println!("Old Message");
++ hello::hello();
+ }
   </FILE_PATCH>
 
 <FILE_COPY from_path="docs/OLD_README.md" to_path="docs/README.backup.md" />
