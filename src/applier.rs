@@ -220,14 +220,13 @@ pub fn apply_patch_incremental(original: &str, patch_raw: &str) -> Result<ApplyP
 
 	let raw_hunks = patch_completer::split_raw_hunks(&patch_lf);
 
-	// If only one hunk, use the all-or-nothing path for simplicity
-	if raw_hunks.len() <= 1 {
-		let (new_content, tier) = apply_patch("<incremental-single-hunk>", original, patch_raw)?;
+	// Zero hunks: nothing to apply, return original unchanged.
+	if raw_hunks.is_empty() {
 		return Ok(ApplyPatchIncrementalData {
-			new_content,
-			max_tier: tier,
+			new_content: working_content,
+			max_tier: None,
 			hunk_errors: Vec::new(),
-			total_hunks: raw_hunks.len(),
+			total_hunks: 0,
 		});
 	}
 
