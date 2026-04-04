@@ -68,10 +68,13 @@ fn test_patches_test_05() -> Result<()> {
 #[test]
 fn test_patches_test_06() -> Result<()> {
 	// -- Exec
-	let res = run_test_scenario("test-06-no-match", true);
+	let data = run_test_scenario("test-06-no-match", false)?;
 
 	// -- Check
-	let _err = res.err().ok_or("Should have failed")?;
+	assert!(
+		data.total_error_hunks() > 0,
+		"Expected hunk errors for non-matching patch, but got none"
+	);
 
 	Ok(())
 }
@@ -454,11 +457,15 @@ fn test_patches_test_20() -> Result<()> {
 #[test]
 fn test_patches_test_21() -> Result<()> {
 	// -- Exec
-	let res = run_test_scenario("test-21-silent-noop-hunk", true);
+	let data = run_test_scenario("test-21-silent-noop-hunk", false)?;
 
 	// -- Check
-	let err = res.err().ok_or("Should have failed")?;
-	assert_contains!(err.to_string(), "Could not find patch context in original file");
+	assert!(
+		data.total_error_hunks() > 0,
+		"Expected hunk errors for non-matching patch, but got none"
+	);
+	let error_hunks = data.all_error_hunks();
+	assert_contains!(error_hunks[0].cause, "Could not find patch context in original file");
 
 	Ok(())
 }
@@ -466,10 +473,13 @@ fn test_patches_test_21() -> Result<()> {
 #[test]
 fn test_patches_test_22() -> Result<()> {
 	// -- Exec
-	let res = run_test_scenario("test-22-not-matching", true);
+	let data = run_test_scenario("test-22-not-matching", false)?;
 
 	// -- Check
-	assert!(res.is_err(), "should be error");
+	assert!(
+		data.total_error_hunks() > 0,
+		"Expected hunk errors for non-matching patch, but got none"
+	);
 
 	Ok(())
 }
