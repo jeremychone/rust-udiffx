@@ -34,15 +34,39 @@ fn test_patch_completer_complete_tilde_basic_range_remove() -> Result<()> {
 
 	// -- Check
 	// All lines 2 through 7 should be removed
-	assert!(completed.contains("-line 2\n"), "line 2 should be removed. Got:\n{completed}");
-	assert!(completed.contains("-line 3\n"), "line 3 should be removed. Got:\n{completed}");
-	assert!(completed.contains("-line 4\n"), "line 4 should be removed (expanded). Got:\n{completed}");
-	assert!(completed.contains("-line 5\n"), "line 5 should be removed (expanded). Got:\n{completed}");
-	assert!(completed.contains("-line 6\n"), "line 6 should be removed. Got:\n{completed}");
-	assert!(completed.contains("-line 7\n"), "line 7 should be removed. Got:\n{completed}");
+	assert!(
+		completed.contains("-line 2\n"),
+		"line 2 should be removed. Got:\n{completed}"
+	);
+	assert!(
+		completed.contains("-line 3\n"),
+		"line 3 should be removed. Got:\n{completed}"
+	);
+	assert!(
+		completed.contains("-line 4\n"),
+		"line 4 should be removed (expanded). Got:\n{completed}"
+	);
+	assert!(
+		completed.contains("-line 5\n"),
+		"line 5 should be removed (expanded). Got:\n{completed}"
+	);
+	assert!(
+		completed.contains("-line 6\n"),
+		"line 6 should be removed. Got:\n{completed}"
+	);
+	assert!(
+		completed.contains("-line 7\n"),
+		"line 7 should be removed. Got:\n{completed}"
+	);
 	// Context lines should remain
-	assert!(completed.contains(" line 1\n"), "line 1 should be context. Got:\n{completed}");
-	assert!(completed.contains(" line 8"), "line 8 should be context. Got:\n{completed}");
+	assert!(
+		completed.contains(" line 1\n"),
+		"line 1 should be context. Got:\n{completed}"
+	);
+	assert!(
+		completed.contains(" line 8"),
+		"line 8 should be context. Got:\n{completed}"
+	);
 
 	Ok(())
 }
@@ -178,7 +202,10 @@ fn test_patch_completer_complete_tilde_resilient_anchors() -> Result<()> {
 	// -- Check
 	assert!(completed.contains("-    remove A\n"), "remove A should be removed");
 	assert!(completed.contains("-    remove B\n"), "remove B should be removed");
-	assert!(completed.contains("-    remove C\n"), "remove C should be removed (expanded)");
+	assert!(
+		completed.contains("-    remove C\n"),
+		"remove C should be removed (expanded)"
+	);
 	assert!(completed.contains("-    remove D\n"), "remove D should be removed");
 	assert!(completed.contains("-    remove E\n"), "remove E should be removed");
 	let tier = tier.ok_or("Should have a tier")?;
@@ -207,7 +234,10 @@ fn test_patch_completer_complete_tilde_with_blank_lines_in_range() -> Result<()>
 	assert!(completed.contains("-fourth\n"), "fourth should be removed");
 	assert!(completed.contains("-fifth\n"), "fifth should be removed");
 	// The blank line between second and fourth should also be removed (expanded)
-	assert!(completed.contains("-\n"), "blank line should be removed (expanded). Got:\n{completed}");
+	assert!(
+		completed.contains("-\n"),
+		"blank line should be removed (expanded). Got:\n{completed}"
+	);
 
 	Ok(())
 }
