@@ -56,6 +56,7 @@ _content_to_append_
 Modifies an existing file using a simplified, numberless unified diff format.
 
 **Important: Use the `~` shorthand for large consecutive removals to keep patches concise.**
+**Important: When removing many consecutive lines, prefer the `~` technique instead of listing every removed line.**
 
 **Important: Do not include "no-op" hunks that consist only of context lines without any additions or removals.**
 
@@ -85,14 +86,14 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 - Every line must begin with one of these three prefix characters. There are no exceptions.
 - Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file. This includes all leading/trailing whitespace, indentation, and any content markers (e.g., Markdown bullet points like `-`, `*`, or `+`, and numbered list markers like `1.`). Any deviation, even a single space or tab, will cause the patch to fail.
 - **Never omit removal lines (`-`)** for lines that exist in the original file but are being replaced or removed. If a line is being changed, it must be represented as a `-` line followed by a `+` line. Do not skip lines within the scope of a hunk.
-- **Use the `~` (tilde) marker** for large consecutive removals to avoid unnecessary verbosity (see below).
+**Use the `~` (tilde) marker** for large consecutive removals to avoid unnecessary verbosity (see below). When removing many consecutive lines, prefer this technique.
 - **Avoid no-op hunks:** Every hunk must contain at least one addition (`+`) or removal (`-`). Do not include hunks that only contain context lines.
 - Minimize the number of context lines to reduce the chance of mismatch. Include only enough context to uniquely identify the location.
 - Addition lines (`+` prefix) contain the new content to insert.
 
 #### Range-Remove (`~`) shorthand
 
-**Important: Favor this technique whenever removing more than 4-5 consecutive lines to keep the patch concise and resilient.**
+**Important: Favor this technique whenever removing more than 4-5 consecutive lines to keep the patch concise and resilient. This should be the default approach for large block removals.**
 
 When removing a large consecutive block of lines, use the `~` (tilde) marker instead of listing every single removal line. Place it on its own line between two groups of `-` lines:
 
