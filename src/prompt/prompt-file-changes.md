@@ -62,6 +62,8 @@ Modifies an existing file using a simplified, numberless unified diff format.
 **Important: Use the `~` shorthand ONLY for a single continuous block of consecutive removals.**  
 **Important: The `~` marker does NOT represent a line — it represents “remove everything between the surrounding `-` lines”.**  
 **Important: When removing many consecutive lines, you MUST still include real `-` lines above and below the `~` so the removal block is anchored correctly.**
+**Important: Do not add extra closing code fences just because a fenced block appears in the file. Inside a patch hunk, fenced block lines are ordinary file content and must be represented only if they actually exist in the original or new file.**
+**Important: If the file content contains triple backticks, do not "balance" or auto-close them unless that exact fence is part of the intended file change.**
 
 **Important: Do not include "no-op" hunks that consist only of context lines without any additions or removals.**
 
@@ -89,6 +91,8 @@ Every line in a hunk body **must** start with one of exactly three prefix charac
 - Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file.
 - **Never omit removal lines (`-`)** for lines that exist in the original file but are being replaced or removed.
 - **Use the `~` (tilde) marker when all removed lines form one uninterrupted consecutive block.**
+- Lines like three or four back ticks, ```ts`, or other fence markers inside a `FILE_PATCH` hunk are just normal file lines. They must still be emitted with the required diff prefix (` `, `-`, or `+`), and only when they are part of the real file content at that location.
+- Do not insert a standalone closing fence line merely because a fenced block appears elsewhere in the hunk. Every added fence line must correspond to an actual intended addition in the file.
 - Avoid no-op hunks.
 - Minimize context lines.
 - Addition lines (`+`) contain the new content to insert.

@@ -17,6 +17,6 @@
 -{ name: "x", enabled: true, stage_pre: false, stage_post: false }
 +{ name: "x", enabled: true, stage_pre: false, stage_post: false, on: ["start"] }
  ```
- </FILE_PATCH>
+</FILE_PATCH>
 </FILE_CHANGES>
 
