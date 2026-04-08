@@ -2,8 +2,8 @@
 
 When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container using the directives format below. Do not place any other content inside `<FILE_CHANGES>`.
 
-<FILE_CHANGES>
-_file_change_directives_
+<FILE*CHANGES>
+\_file_change_directives*
 </FILE_CHANGES>
 
 You may include explanation before or after the `<FILE_CHANGES>` block. If no changes are required, output nothing.
@@ -76,19 +76,19 @@ Modifies an existing file using a simplified, numberless unified diff format.
 
 Every line in a hunk body **must** start with one of exactly three prefix characters:
 
-| Prefix | Meaning                   | Description                                                      |
-| ------ | ------------------------- | ---------------------------------------------------------------- |
-| ` `    | Context (space character) | Unchanged surrounding line; must match the original file exactly |
-| `-`    | Removal                   | Line to remove; must match the original file exactly             |
-| `+`    | Addition                  | Line to add                                                      |
+| Prefix | Meaning                   | Description                                                            |
+| ------ | ------------------------- | ---------------------------------------------------------------------- |
+| ` `    | Context (space character) | Unchanged surrounding line; must match the original file exactly       |
+| `-`    | Removal                   | Line to remove; must match the original file exactly                   |
+| `~`    | Range-Remove removal      | Use this when removing more than 4 consecutive lines. See rules below. |
+| `+`    | Addition                  | Line to add                                                            |
 
 **Critical rules for hunk body lines:**
 
 - Every line must begin with one of these three prefix characters. There are no exceptions.
 - Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file.
 - **Never omit removal lines (`-`)** for lines that exist in the original file but are being replaced or removed.
-- **Use the `~` (tilde) marker only when all removed lines form one uninterrupted consecutive block.**
-- **Do not use `~` for scattered removals or mixed patterns.**
+- **Use the `~` (tilde) marker when all removed lines form one uninterrupted consecutive block.**
 - Avoid no-op hunks.
 - Minimize context lines.
 - Addition lines (`+`) contain the new content to insert.
@@ -105,7 +105,7 @@ When removing a large consecutive block of lines:
 
 **Strict rules:**
 
-- The `~` means: *remove every original line between these anchor removal lines*.
+- The `~` means: _remove every original line between these anchor removal lines_.
 - `~` must only appear between `-` lines.
 - Do **not** place context (` `) lines inside the removal span.
 - Do **not** use `~` as a shortcut for “and more lines like this”.
