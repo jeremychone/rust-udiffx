@@ -484,6 +484,17 @@ fn test_patches_test_22() -> Result<()> {
 	Ok(())
 }
 
+#[test]
+fn test_patches_test_23() -> Result<()> {
+	// -- Exec
+	let res = run_test_scenario("test-23-ts-blocks", false)?;
+
+	// -- Check
+	println!("->> {}", res.total_error_hunks());
+
+	Ok(())
+}
+
 // region:    --- Support
 
 #[derive(Debug)]

@@ -1,0 +1,17 @@
+Normalization examples:
+
+```ts
+"my-agent"
+// =>
+{ name: "my-agent", enabled: true, stage_pre: true, stage_post: false }
+
+{ name: "x", stage_pre: false }
+// =>
+{ name: "x", enabled: true, stage_pre: false, stage_post: false }
+
+{ name: "x", stage_post: true }
+// =>
+{ name: "x", enabled: true, stage_pre: true, stage_post: true }
+```
+
+To modify the request state, the sub-agent should return a stage-specific table. If the return value is `nil`, it is interpreted as success with no modifications.
