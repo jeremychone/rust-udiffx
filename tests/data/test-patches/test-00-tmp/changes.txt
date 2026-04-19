@@ -1,0 +1,16 @@
+<FILE_CHANGES>
+<FILE_PATCH file_path="original.txt">
+@@
+ const SCROLL_KEY_MAIN_VIEW: bool = true;
+
+-pub fn process_app_state(state: &mut AppState) {
++#[derive(Debug, Clone, Copy, Default)]
++pub struct ProcessAppStateOpts {
++	pub do_refresh_current_tasks: bool,
++}
++
++pub fn process_app_state(state: &mut AppState, opts: ProcessAppStateOpts) {
+ 	// -- Process tick
+ 	state.core.time = now_micro();
+</FILE_PATCH>
+</FILE_CHANGES>

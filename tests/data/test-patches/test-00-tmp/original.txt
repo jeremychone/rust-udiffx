@@ -1,0 +1,5 @@
+const SCROLL_KEY_MAIN_VIEW: bool = true;
+
+pub fn process_app_state(state: &mut AppState) {
+	// -- Process tick
+	state.core.time = now_micro();

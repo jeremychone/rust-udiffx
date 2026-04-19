@@ -9,6 +9,20 @@ mod test_support;
 
 type Result<T> = core::result::Result<T, Box<dyn std::error::Error>>; // For tests.
 
+// Just a quick test one
+// cwt test_patches_test_00_tmp
+// #[test]
+#[allow(unused)]
+fn test_patches_test_00_tmp() -> Result<()> {
+	// -- Exec
+	let data = run_test_scenario("test-00-tmp", false)?;
+
+	// -- Check
+	println!("test tmp result:\n{}", data.first_content().ok_or("no content")?);
+
+	Ok(())
+}
+
 #[test]
 fn test_patches_test_01() -> Result<()> {
 	// -- Exec
