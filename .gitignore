@@ -3,6 +3,10 @@
 .*
 !.gitignore
 
+_*
+!**/src/**/_*/
+!**/src/**/_*
+
 # -- AIPack
 # By default, ignore all paths starting with .aipack
 .aipack
