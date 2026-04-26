@@ -237,7 +237,11 @@ fn leading_ws_len(line: &str) -> usize {
 
 /// Checks whether all non-blank matched pairs have a uniform leading-whitespace delta.
 /// Returns `true` if the delta is the same for every pair (or if there are no non-blank pairs).
-pub(super) fn has_uniform_indent_delta(orig_lines: &[&str], hunk_lines: &[&str], matched_orig_indices: &[(usize, usize)]) -> bool {
+pub(super) fn has_uniform_indent_delta(
+	orig_lines: &[&str],
+	hunk_lines: &[&str],
+	matched_orig_indices: &[(usize, usize)],
+) -> bool {
 	let mut delta: Option<isize> = None;
 
 	for &(hl_idx, orig_idx) in matched_orig_indices {
