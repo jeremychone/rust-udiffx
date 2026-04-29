@@ -33,7 +33,7 @@ tracing = "0.1"
 # -- Files
 simple-fs = { version = "0.12.0-beta.2"}
 # -- Diff & Text
-diffy = "0.4.2"
+diffy = "0.5"
 markex = { version = "0.1.0" }
 # -- Others
 derive_more = { version = "2", features = ["from", "display"] }
