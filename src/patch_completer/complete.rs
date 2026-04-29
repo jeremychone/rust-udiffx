@@ -781,16 +781,9 @@ fn compute_hunk_bounds(
 	});
 
 	let best = best.ok_or_else(|| {
-		let context_pattern: Vec<String> = hunk_lines
-			.iter()
-			.filter(|l| l.starts_with(' ') || l.starts_with('-') || l.trim() == "~")
-			.map(|l| if l.is_empty() { "" } else { &l[1..] }.to_string())
-			.collect();
-
 		Error::patch_completion(format!(
-			"Could not find patch context in original file (starting search from line {})\nContext lines:\n{}",
-			search_from + 1,
-			context_pattern.join("\n")
+			"Could not find patch context in original file (starting search from line {})",
+			search_from + 1
 		))
 	})?;
 
