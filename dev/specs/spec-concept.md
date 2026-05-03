@@ -57,6 +57,8 @@ Format:
 
 Used to append content to the end of a file. If the file does not exist, it is created.
 
+**CRITICAL:** This directive MUST always be used for appends instead of `FILE_PATCH`. Using `FILE_PATCH` for appends is error-prone and consumes more tokens unnecessarily.
+
 - Attributes: `file_path="..."`
 - Content: The content to append.
 

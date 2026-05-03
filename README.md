@@ -160,7 +160,7 @@ fn main() -> Result<()> {
 ## Directive behavior
 
 - `FILE_NEW`: creates or overwrites a file. Parent directories are created.
-- `FILE_APPEND`: appends content to the end of a file. If the file does not exist, it is created.
+- `FILE_APPEND`: appends content to the end of a file. If the file does not exist, it is created. **CRITICAL: This directive MUST be used instead of `FILE_PATCH` for adding content to the end of a file.**
 - `FILE_PATCH`: reads the target file, applies a unified diff, and writes the result back.
   - When a patch contains multiple hunks, each hunk is applied independently. If some hunks fail, the successfully applied hunks are still written. The directive is considered successful if at least one hunk applies. Per-hunk failure details are available in `DirectiveStatus.error_hunks`.
   - The patch matcher is resilient to common LLM artifacts, including wrapper lines like `*** Begin Patch` / `*** End Patch`, whitespace normalization, suffix-only context fragments, blank-line drift, and several fuzzy formatting differences.

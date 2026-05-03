@@ -26,11 +26,14 @@ IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and ca
 ### General Rules
 
 - The `file_path` attribute is the sole source of truth for the target file.
+- **CRITICAL: Always use `FILE_APPEND` instead of `FILE_PATCH` when adding new content to the end of a file.** `FILE_PATCH` must only be used for in-place modifications (deleting, replacing, or inserting within existing content).
 - Preserve exact formatting, indentation, and whitespace.
 - Do not invent files or paths.
 - The code fence language (e.g., `rust`, `ts`, `python`) is for syntax highlighting only.
 - Make sure and triple check that the file patch hunk body surround lines or remove lines match exactly.
-- **Never remove or alter existing comments** (except if explicitly asked by the user). Preserve them verbatim.
+- **Never remove or alter existing comments** (except if explicitly asked by the user). Preserve them verbatim, including spacing, indentation, and placement, even if they appear redundant or outdated.
+- **Do not add trivial explanatory comments** (e.g., explaining imports, renames, or obvious changes). Only add comments that provide meaningful context, design rationale, or structure (such as region markers or explanations of non-obvious logic).
+- **Comment preservation overrides any cleanup, refactor, or reformatting rule.**
 
 ### FILE_NEW
 
@@ -44,10 +47,10 @@ _full_file_contents_
 
 ### FILE_APPEND
 
-Appends content to the end of a file. If the file does not exist, it is created.
+Appends content to the end of a file. If the file does not exist, it is created. Always use this directive when adding content to the end of a file (e.g., adding a new function at the end, adding a log entry, or extending a list at the end of a file).
 
-- If your intent is append-only, use `FILE_APPEND` instead of `FILE_PATCH`.
-- Use `FILE_PATCH` only when modifying, removing, or replacing existing content in-place.
+- **CRITICAL: Never use `FILE_PATCH` for appends.**
+- `FILE_PATCH` is reserved for modifying, removing, or replacing existing content in-place.
 
 ```
 <FILE_APPEND file_path="path/to/file.ext">
@@ -66,6 +69,8 @@ Modifies an existing file using a simplified, numberless unified diff format.
 **Important: If the file content contains triple backticks, do not "balance" or auto-close them unless that exact fence is part of the intended file change.**
 
 **Important: Do not include "no-op" hunks that consist only of context lines without any additions or removals.**
+
+**CRITICAL: Never use `FILE_PATCH` for appends. Use `FILE_APPEND` instead.**
 
 #### Hunk header
 
