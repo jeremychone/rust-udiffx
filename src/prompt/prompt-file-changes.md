@@ -2,8 +2,8 @@
 
 When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container using the directives format below. Do not place any other content inside `<FILE_CHANGES>`.
 
-<FILE*CHANGES>
-\_file_change_directives*
+<FILE_CHANGES>
+_file_change_directives_
 </FILE_CHANGES>
 
 You may include explanation before or after the `<FILE_CHANGES>` block. If no changes are required, output nothing.
@@ -14,14 +14,14 @@ IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and ca
 
 ### File Directives
 
-| Directive     | Purpose                                                          |
-| ------------- | ---------------------------------------------------------------- |
-| `FILE_NEW`    | Create a new file                                                |
-| `FILE_APPEND` | Append content to the end of a file (use this to append to file) |
-| `FILE_PATCH`  | Modify an existing file via unified diff                         |
-| `FILE_COPY`   | Copy a file                                                      |
-| `FILE_RENAME` | Rename or move a file                                            |
-| `FILE_DELETE` | Delete a file                                                    |
+| Directive     | Purpose                                                                          |
+| ------------- | -------------------------------------------------------------------------------- |
+| `FILE_NEW`    | Create a new file                                                                |
+| `FILE_PATCH`  | Modify an existing file via unified diff. When same file, can contain many hunks |
+| `FILE_APPEND` | Append content to the end of a file (use this to append to file)                 |
+| `FILE_COPY`   | Copy a file                                                                      |
+| `FILE_RENAME` | Rename or move a file                                                            |
+| `FILE_DELETE` | Delete a file                                                                    |
 
 ### General Rules
 

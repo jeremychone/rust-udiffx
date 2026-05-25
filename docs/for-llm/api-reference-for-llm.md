@@ -154,7 +154,8 @@ Behavior:
 
 Signature:
 
-- `pub fn apply_file_changes(base_dir: &simple_fs::SPath, file_changes: FileChanges) -> Result<ApplyChangesStatus>`
+ `pub fn apply_file_changes(base_dir: impl Into<SPath>, file_changes: FileChanges, security_policy: impl Into<SecurityPolicy>) -> Result<ApplyChangesStatus>`
+The `security_policy` parameter controls path-traversal restrictions. Pass `None` (or `SecurityPolicy::default()`) for the default strict containment: all file operations must stay inside `base_dir`. See **SecurityPolicy** below for details.
 
 Core rules:
 - All directive paths are interpreted as relative to `base_dir`.
@@ -254,6 +255,24 @@ Notes:
 - `error_hunks` contains per-hunk patch failures, each with the hunk body and a cause string.
 - For `Copy` and `Rename`, `DirectiveStatus::file_path()` returns the destination path.
 - For `Fail`, `DirectiveStatus::file_path()` returns the stored path when available, otherwise `"unknown"`.
+
+### SecurityPolicy
+
+`SecurityPolicy` provides configurable, safe‑by‑default control over which directories
+can be read from or written to when applying changes.
+
+- `pub struct SecurityPolicy { pub writable_dirs: Vec<SPath>, pub read_anywhere: bool, pub bypass_all_checks: bool }`
+
+Key constructors/methods:
+- `SecurityPolicy::default()` – writes restricted to `base_dir`, reads also restricted.
+- `SecurityPolicy::trusted_cwd()` – trusts the full current working directory.
+- `SecurityPolicy::from_writable_dirs(dirs)` – populate `writable_dirs` from an iterator.
+- `.append_writable_dir(dir)`, `.append_writable_dirs(dirs)`, `.with_writable_dirs(dirs)`
+- `.with_read_anywhere()` – allow reading from any path.
+- `.with_bypass_all_checks()` – disable all path checks.
+
+Conversion: `Option<SecurityPolicy>` ⇒ `SecurityPolicy` via `From`, so `None` means strict default.
+
 
 ## Recommended LLM output patterns (strict)
 
