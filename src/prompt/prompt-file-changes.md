@@ -62,15 +62,22 @@ _content_to_append_
 
 Modifies an existing file using a simplified, numberless unified diff format.
 
-**Important: Use the `~` shorthand ONLY for a single continuous block of consecutive removals.**  
-**Important: The `~` marker does NOT represent a line — it represents “remove everything between the surrounding `-` lines”.**  
-**Important: When removing many consecutive lines, you MUST still include real `-` lines above and below the `~` so the removal block is anchored correctly.**
-**Important: Do not add extra closing code fences just because a fenced block appears in the file. Inside a patch hunk, fenced block lines are ordinary file content and must be represented only if they actually exist in the original or new file.**
-**Important: If the file content contains triple backticks, do not "balance" or auto-close them unless that exact fence is part of the intended file change.**
+**CRITICAL:** Use `FILE_APPEND` for pure append operations (adding content only at EOF without modifying existing content). Use `FILE_PATCH` only when existing content changes.
 
-**Important: Do not include "no-op" hunks that consist only of context lines without any additions or removals.**
+- **Important: Use `~` only for one continuous range of removed lines within a single hunk.**
+- **Important: Multiple `~` usages are allowed only if they occur in separate hunks.**
+- **Important: `~` is not a literal file line. It means: "remove every line between the immediately surrounding `-` lines".**
+- **Important: The surrounding `-` lines are required anchors and must be actual removed lines from the file.**
+- **Important: Do not mix `~` with explicit `-` lines for the same removed region.**
+- **Important: Do not use `~` for additions or mixed add/remove regions.**
 
-**CRITICAL: Never use `FILE_PATCH` for appends. Use `FILE_APPEND` instead.**
+- **Important: Inside a patch hunk, file contents are treated literally.**
+- **Important: Do not add extra closing code fences merely because fenced blocks appear in file content.**
+- **Important: If file content contains triple backticks, do not "balance", close, or repair them unless that exact change is intended.**
+
+- **Important: Do not create no-op hunks consisting only of unchanged context lines.**
+- **Important: Keep patches minimal; modify only the lines required for the intended change.**
+- **Important: Preserve all unrelated content exactly as-is.**
 
 #### Hunk header
 
