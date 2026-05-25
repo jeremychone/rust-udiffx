@@ -4,206 +4,99 @@ Parse and apply an AI-optimized “file changes” envelope that carries multipl
 
 This crate is designed for LLM output that needs to be machine-parsable and efficient for large files with small edits.
 
-[Doc for LLM](doc/for-llm/api-reference-for-llm.md)
+[Doc for LLM](docs/for-llm/api-reference-for-llm.md)
 
-## Concept, `FILE_CHANGES`
+## Quick Example
 
-A response contains one root container:
+When the LLM returns some text eventually `FILE_CHANGES` tag like :
 
-- `<FILE_CHANGES> ... </FILE_CHANGES>`
+```txt
 
-Inside it, you can mix multiple directives:
-
-- `<FILE_NEW file_path="..."> ... </FILE_NEW>`
-- `<FILE_PATCH file_path="..."> ... </FILE_PATCH>` (unified diff content)
-- `<FILE_APPEND file_path="..."> ... </FILE_APPEND>`
-- `<FILE_COPY from_path="..." to_path="..." />`
-- `<FILE_RENAME from_path="..." to_path="..." />`
-- `<FILE_DELETE file_path="..." />`
-
-Notes:
-
-- Tags are XML-like but not intended to be strictly XML-compliant.
-- The parser is tag-based. It extracts only the above tags, and content does not need XML escaping.
-- Self-closing tags like `<FILE_DELETE ... />` are supported.
-
-## API overview
-
-The crate exposes two main operations:
-
-- Extract: parse the first `<FILE_CHANGES>` block from a string.
-- Apply: execute the extracted directives against a base directory.
-
-Key public types:
-
-- `FileChanges`, an iterable list of directives.
-- `FileDirective`, one directive (new, patch, append, copy, rename, delete, fail).
-- `ApplyChangesStatus`, per-directive success and error reporting.
-- `Error` / `Result<T>`, the crate error type and alias.
-
-## Gathering file context
-
-Use `load_files_context` to gather files matching globs and format them for an LLM context.
-
-```rust
-use udiffx::{load_files_context, Result};
-
-fn main() -> Result<()> {
-    let base_dir = "./my-project";
-    let globs = &["src/**/*.rs", "Cargo.toml"];
-    
-    if let Some(context) = load_files_context(base_dir, globs)? {
-        println!("{context}");
-    }
-
-    Ok(())
-}
-```
-
-Output format:
-
-```xml
-<FILE_CONTENT path="Cargo.toml">
-... content ...
-</FILE_CONTENT>
-
-<FILE_CONTENT path="src/main.rs">
-... content ...
-</FILE_CONTENT>
-```
-
-## Extracting changes from text
-
-Use `extract_file_changes` to parse a model response or any input string.
-
-```rust
-use udiffx::{extract_file_changes, Result};
-
-fn main() -> Result<()> {
-    let input = r#"
-Some text...
+I fix the issue you reported. 
 
 <FILE_CHANGES>
+
 <FILE_NEW file_path="src/hello.rs">
-pub fn hello() { println!("Hello"); }
+pub fn hello() {
+    println!("Hello from udiffx");
+}
 </FILE_NEW>
 
-<FILE_DELETE file_path="old.txt" />
+<FILE_APPEND file_path="changelog.md">
+## Next
+
+- Add a hello module.
+</FILE_APPEND>
+
+<FILE_PATCH file_path="src/main.rs">
+@@
++mod hello;
+
+ fn main() {
+-    println!("Hello");
++    hello::hello();
+ }
+</FILE_PATCH>
+
+<FILE_COPY from_path="docs/template.md" to_path="docs/getting-started.md" />
+
+<FILE_RENAME from_path="src/old-name.rs" to_path="src/legacy-name.rs" />
+
+<FILE_DELETE file_path="tmp/generated.txt" />
+
 </FILE_CHANGES>
-"#;
 
-    let (changes, _extruded) = extract_file_changes(input, false)?;
-
-    if changes.is_empty() {
-        println!("No changes found");
-        return Ok(());
-    }
-
-    for d in &changes {
-        println!("{d:?}");
-    }
-
-    Ok(())
-}
 ```
 
-`extract_content` parameter:
-
-- `extract_content = false` parses tags and returns `extruded = None`.
-- `extract_content = true` also returns the input with the extracted `<FILE_CHANGES>` block removed as `Some(String)`.
-
-## Applying changes to disk
-
-Use `apply_file_changes` to execute directives relative to a base directory.
-
-- All file paths are treated as relative to `base_dir`.
-- The crate performs basic path safety checks to ensure operations stay within `base_dir`.
-- Patch application uses `diffy` (unified diff parsing and application).
+Your Rust code picks it up and applies everything in one shot:
 
 ```rust
 use simple_fs::SPath;
 use udiffx::{apply_file_changes, extract_file_changes, Result};
 
 fn main() -> Result<()> {
+    let ai_response = "..."; // the string above
     let base_dir = SPath::new("./my-project");
-
-    let input = r#"
-<FILE_CHANGES>
-<FILE_PATCH file_path="src/main.rs">
-@@ -1,3 +1,3 @@
--fn main() { println!("Hello"); }
-+fn main() { println!("Hello, world"); }
-</FILE_PATCH>
-</FILE_CHANGES>
-"#;
-
-    let (changes, _) = extract_file_changes(input, false)?;
+    let (changes, _) = extract_file_changes(ai_response, false)?;
     let status = apply_file_changes(&base_dir, changes)?;
 
-    for d in status.items {
-        if d.success() {
-            println!("OK   {} {}", d.kind(), d.file_path());
+    for item in status.items {
+        if item.success() {
+            println!("OK   {} {}", item.kind(), item.file_path());
         } else {
-            println!(
+            eprintln!(
                 "FAIL {} {}: {}",
-                d.kind(),
-                d.file_path(),
-                d.error_msg().unwrap_or("unknown error")
+                item.kind(),
+                item.file_path(),
+                item.error_msg().unwrap_or("unknown")
             );
         }
     }
-
     Ok(())
 }
 ```
 
-## Directive behavior
+## Directive Behavior
 
-- `FILE_NEW`: creates or overwrites a file. Parent directories are created.
-- `FILE_APPEND`: appends content to the end of a file. If the file does not exist, it is created. **CRITICAL: This directive MUST be used instead of `FILE_PATCH` for adding content to the end of a file.**
-- `FILE_PATCH`: reads the target file, applies a unified diff, and writes the result back.
-  - When a patch contains multiple hunks, each hunk is applied independently. If some hunks fail, the successfully applied hunks are still written. The directive is considered successful if at least one hunk applies. Per-hunk failure details are available in `DirectiveStatus.error_hunks`.
-  - The patch matcher is resilient to common LLM artifacts, including wrapper lines like `*** Begin Patch` / `*** End Patch`, whitespace normalization, suffix-only context fragments, blank-line drift, and several fuzzy formatting differences.
-  - A patch can also create a previously missing file by applying against empty original content.
-- `FILE_COPY`: copies a file from `from_path` to `to_path`.
-  - The source must exist and be a file.
-  - The destination parent directories are created as needed.
-  - If the destination exists, it is overwritten.
-  - Copy is performed as a binary file copy, without preserving permissions.
-- `FILE_RENAME`: renames or moves `from_path` to `to_path`.
-- `FILE_DELETE`: removes a file or directory recursively.
+- `<FILE_NEW file_path="..."> ... </FILE_NEW>` – creates or overwrites a file.
+- `<FILE_APPEND file_path="..."> ... </FILE_APPEND>` – appends content to the end of a file (creates if missing).
+- `<FILE_PATCH file_path="..."> ... </FILE_PATCH>` – modifies a file with one or more unified-diff hunks.
+- `<FILE_COPY from_path="..." to_path="..." />` – copies a file.
+- `<FILE_RENAME from_path="..." to_path="..." />` – renames or moves a file.
+- `<FILE_DELETE file_path="..." />` – deletes a file or directory recursively.
 
-If extraction fails for a directive (unknown tag, missing attribute, etc.), the directive is represented as:
+All paths are relative to the base directory.
 
-- `FileDirective::Fail { kind, file_path, error_msg }`
+## Additional Features
 
-When applying, `Fail` directives always yield an error for that directive and are reported via `ApplyChangesInfo`.
-
-## Format tips for LLM output
-
-- Always emit exactly one `<FILE_CHANGES>` block when you intend to apply changes.
-- Prefer `FILE_PATCH` for small edits to large files.
-- Use self-closing tags for copy, rename, and delete when convenient:
-  - `<FILE_COPY from_path="a" to_path="b" />`
-  - `<FILE_RENAME from_path="a" to_path="b" />`
-  - `<FILE_DELETE file_path="path" />`
-
-## System prompt (optional)
-
-The crate includes the recommended system instructions for LLMs to ensure they output the correct format. This is available via the `prompt` feature.
-
-```toml
-[dependencies]
-udiffx = { version = "0.1", features = ["prompt"] }
-```
-
-```rust
-use udiffx::prompt;
-
-let instructions = prompt();
-// Pass this to your LLM system message.
-```
+- `load_files_context(base_dir, globs)` gathers file contents into `<FILE_CONTENT path="...">` blocks for LLM input.
+- `prompt()` (feature `prompt`) returns recommended LLM system instructions for the envelope format.
+- `apply_file_changes` performs path safety checks and applies patches incrementally; per-hunk errors are reported without stopping the whole operation.
 
 ## License
 
 MIT OR Apache-2.0
+
+---
+
+[This Repo](https://github.com/jeremychone/rust-udiffx)
