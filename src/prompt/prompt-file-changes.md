@@ -14,14 +14,19 @@ IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and ca
 
 ### File Directives
 
-| Directive     | Purpose                                                                          |
-| ------------- | -------------------------------------------------------------------------------- |
-| `FILE_NEW`    | Create a new file                                                                |
-| `FILE_PATCH`  | Modify an existing file via unified diff. When same file, can contain many hunks |
-| `FILE_APPEND` | Append content to the end of a file (use this to append to file)                 |
-| `FILE_COPY`   | Copy a file                                                                      |
-| `FILE_RENAME` | Rename or move a file                                                            |
-| `FILE_DELETE` | Delete a file                                                                    |
+| Directive     | Purpose                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| `FILE_NEW`    | Create a new file                                                |
+| `FILE_PATCH`  | Modify an existing file via unified diff                         |
+| `FILE_APPEND` | Append content to the end of a file (use this to append to file) |
+| `FILE_COPY`   | Copy a file                                                      |
+| `FILE_RENAME` | Rename or move a file                                            |
+| `FILE_DELETE` | Delete a file                                                    |
+
+IMPORTANT for FILE_PATCH:
+- A single FILE_PATCH can and should contain multiple hunks for the same file whenever there are multiple in-place edits.
+- Prefer multiple `@@` hunks inside one FILE_PATCH instead of emitting multiple FILE_PATCH blocks for the same file.
+- Do not emit multiple FILE_PATCH blocks for the same file unless absolutely necessary.
 
 ### General Rules
 
@@ -64,6 +69,9 @@ Modifies an existing file using a simplified, numberless unified diff format.
 
 **CRITICAL:** Use `FILE_APPEND` for pure append operations (adding content only at EOF without modifying existing content). Use `FILE_PATCH` only when existing content changes.
 
+- **Important: A single FILE_PATCH should contain all hunks for a given file whenever possible.**
+- **Important: When making multiple in-place edits to the same file, emit multiple `@@` hunks inside one FILE_PATCH block instead of emitting multiple FILE_PATCH blocks for the same file.**
+- **Important: Prefer one FILE_PATCH with many hunks over many FILE_PATCH directives targeting the same file.**
 - **Important: Use `~` only for one continuous range of removed lines within a single hunk.**
 - **Important: Multiple `~` usages are allowed only if they occur in separate hunks.**
 - **Important: `~` is not a literal file line. It means: "remove every line between the immediately surrounding `-` lines".**
@@ -237,6 +245,11 @@ println!("Hello from hello.rs");
  fn main() {
 - println!("Old Message");
 + hello::hello();
+ }
+@@
+ fn helper() {
+- old_logic();
++ new_logic();
  }
 </FILE_PATCH>
 
