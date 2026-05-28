@@ -1,3 +1,4 @@
+use crate::{Error, Result};
 use simple_fs::SPath;
 
 /// A configurable, safe-by-default security policy that controls
@@ -54,7 +55,38 @@ impl From<Option<SecurityPolicy>> for SecurityPolicy {
 	}
 }
 
-/// Fuild apis
+/// Access assertion
+impl SecurityPolicy {
+	/// Asserts that a given directory `target` is allowed for write operations according to this policy.
+	/// Used primarily to validate the base directory of a file-change operation.
+	///
+	/// The check is as follows:
+	/// - If `bypass_all_checks` is set, always succeeds.
+	/// - If `writable_dirs` contains a directory that is an ancestor of `target`, succeeds.
+	/// - Otherwise (default), succeeds only if `target` is under the current working directory (CWD).
+	pub fn assert_write_access(&self, target: &SPath) -> Result<()> {
+		if self.bypass_all_checks {
+			return Ok(());
+		}
+		let target_str = target.as_str();
+		// Check explicit writable directories
+		for wd in &self.writable_dirs {
+			if target_str.starts_with(wd.as_str()) {
+				return Ok(());
+			}
+		}
+		// Fallback: default strict policy — target must be under current working directory.
+		use std::env;
+		let cwd = env::current_dir().map_err(|e| Error::io_read_file(".", e))?;
+		let cwd_spath = SPath::from_std_path(cwd).map_err(|e| Error::custom(format!("invalid CWD: {e}")))?;
+		if !target_str.starts_with(cwd_spath.as_str()) {
+			return Err(Error::security_violation(target.to_string(), cwd_spath.to_string()));
+		}
+		Ok(())
+	}
+}
+
+/// Fluid apis
 impl SecurityPolicy {
 	/// Allow reads from any path, even outside writable directories.
 	pub fn with_read_anywhere(mut self) -> Self {

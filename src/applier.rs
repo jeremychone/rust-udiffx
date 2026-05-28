@@ -35,22 +35,20 @@ pub fn apply_file_changes(
 	security_policy: impl Into<SecurityPolicy>,
 ) -> Result<ApplyChangesStatus> {
 	let base_dir = base_dir.into();
-	// -- Safety check: base_dir must be within CWD
+	let policy: SecurityPolicy = security_policy.into();
+	let policy_ref = Some(&policy);
+
+	// Compute absolute, collapsed base_dir and validate via security policy
 	let cwd = std::env::current_dir().map_err(|err| Error::io_read_file(".", err))?;
-	let cwd_spath = SPath::from_std_path(cwd)?.into_collapsed();
+	let cwd_spath = SPath::from_std_path(cwd)?;
 
 	let base_dir = if base_dir.is_absolute() {
-		base_dir.clone().into_collapsed()
+		base_dir.into_collapsed()
 	} else {
 		cwd_spath.join(base_dir).into_collapsed()
 	};
 
-	if !base_dir.as_str().starts_with(cwd_spath.as_str()) {
-		return Err(Error::security_violation(base_dir.to_string(), cwd_spath.to_string()));
-	}
-
-	let policy: SecurityPolicy = security_policy.into();
-	let policy_ref = Some(&policy);
+	policy.assert_write_access(&base_dir)?;
 
 	let mut items = Vec::new();
 
