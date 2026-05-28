@@ -84,6 +84,16 @@ impl SecurityPolicy {
 		}
 		Ok(())
 	}
+
+	/// Asserts that a given directory `target` is allowed for read operations according to this policy.
+	/// If `read_anywhere` or `bypass_all_checks` is set, reads are allowed anywhere.
+	/// Otherwise, falls back to the write access check (i.e., the target must be in a writable directory).
+	pub fn assert_read_access(&self, target: &SPath) -> Result<()> {
+		if self.bypass_all_checks || self.read_anywhere {
+			return Ok(());
+		}
+		self.assert_write_access(target)
+	}
 }
 
 /// Fluid apis
