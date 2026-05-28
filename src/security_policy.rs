@@ -85,6 +85,28 @@ impl SecurityPolicy {
 		Ok(())
 	}
 
+	/// Asserts that a given file or directory path is allowed for read operations,
+	/// considering an operation’s base directory.
+	///
+	/// - If `read_anywhere` or `bypass_all_checks` is set, always succeeds.
+	/// - Otherwise, succeeds if `target` is under `base_dir` or any `writable_dirs`.
+	pub fn assert_path_read_access(&self, target: &SPath, base_dir: &SPath) -> Result<()> {
+		if self.bypass_all_checks || self.read_anywhere {
+			return Ok(());
+		}
+		// Check base_dir first (most common case)
+		if target.as_str().starts_with(base_dir.as_str()) {
+			return Ok(());
+		}
+		// Check explicit writable directories
+		for wd in &self.writable_dirs {
+			if target.as_str().starts_with(wd.as_str()) {
+				return Ok(());
+			}
+		}
+		Err(Error::security_violation(target.to_string(), base_dir.to_string()))
+	}
+
 	/// Asserts that a given directory `target` is allowed for read operations according to this policy.
 	/// If `read_anywhere` or `bypass_all_checks` is set, reads are allowed anywhere.
 	/// Otherwise, falls back to the write access check (i.e., the target must be in a writable directory).
