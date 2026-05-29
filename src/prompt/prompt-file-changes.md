@@ -1,6 +1,6 @@
-## AI File Change Format
+# AI File Change Format
 
-When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container using the directives format below. Do not place any other content inside `<FILE_CHANGES>`.
+When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container. Do not place any other content inside `<FILE_CHANGES>`.
 
 <FILE_CHANGES>
 _file_change_directives_
@@ -8,233 +8,260 @@ _file_change_directives_
 
 You may include explanation before or after the `<FILE_CHANGES>` block. If no changes are required, output nothing.
 
-IMPORTANT: There can be only one FILE_CHANGES tag per response. So make sure you think of everything before you give the file directives inside that tag.
+## File Directives
 
-IMPORTANT: This `FILE_CHANGES` tag can only have the file directives tag, and cannot contain any other tag.
+| Directive   | Purpose                             |
+| ----------- | ----------------------------------- |
+| FILE_NEW    | Create a new file                   |
+| FILE_PATCH  | Modify existing content in a file   |
+| FILE_APPEND | Append content to the end of a file |
+| FILE_COPY   | Copy a file                         |
+| FILE_RENAME | Rename or move a file               |
+| FILE_DELETE | Delete a file                       |
 
-### File Directives
+### Directive Selection Hierarchy
 
-| Directive     | Purpose                                                          |
-| ------------- | ---------------------------------------------------------------- |
-| `FILE_NEW`    | Create a new file                                                |
-| `FILE_PATCH`  | Modify an existing file via unified diff                         |
-| `FILE_APPEND` | Append content to the end of a file (use this to append to file) |
-| `FILE_COPY`   | Copy a file                                                      |
-| `FILE_RENAME` | Rename or move a file                                            |
-| `FILE_DELETE` | Delete a file                                                    |
+When deciding how to modify a file:
 
-IMPORTANT for FILE_PATCH:
-- A single FILE_PATCH can and should contain multiple hunks for the same file whenever there are multiple in-place edits.
-- Prefer multiple `@@` hunks inside one FILE_PATCH instead of emitting multiple FILE_PATCH blocks for the same file.
-- Do not emit multiple FILE_PATCH blocks for the same file unless absolutely necessary.
+1. Create a new file → FILE_NEW
+2. Add content only at EOF → FILE_APPEND
+3. Modify existing content anywhere in the file → FILE_PATCH
+4. Copy a file → FILE_COPY
+5. Rename or move a file → FILE_RENAME
+6. Delete a file → FILE_DELETE
 
-### General Rules
+**CRITICAL: Never use FILE_PATCH for pure end-of-file additions. Use FILE_APPEND.**
+
+## Critical Output Constraints
+
+### Single FILE_CHANGES Container
+
+- There can be only one `<FILE_CHANGES>` container per response.
+- Think through all required modifications before emitting directives.
+- `<FILE_CHANGES>` may only contain file directives.
+- Do not place explanations, markdown, comments, XML tags, or any other content inside `<FILE_CHANGES>`.
+
+### One FILE_PATCH Per File
+
+**CRITICAL: For a given file, emit at most one FILE_PATCH directive.**
+
+In particular:
+
+- If a file requires multiple in-place edits, use a single FILE_PATCH containing multiple hunks.
+- A FILE_PATCH may contain any number of `@@` hunks.
+- The default assumption is that all in-place modifications for a file belong in one FILE_PATCH.
+- A second FILE_PATCH for the same file should be treated as an error unless it is literally impossible to express the change in a single patch.
+
+Example:
+
+```xml
+<FILE_PATCH file_path="src/main.rs">
+@@
+ first edit
+
+@@
+ second edit
+
+@@
+ third edit
+</FILE_PATCH>
+```
+
+### FILE_PATCH + FILE_APPEND Combination
+
+A file may legitimately use both FILE_PATCH and FILE_APPEND in the same response.
+
+Use this pattern when:
+
+- Existing content must be modified in-place.
+- Additional content must also be appended to the end of the file.
+
+Example:
+
+```xml
+<FILE_PATCH file_path="src/main.ts">
+@@
+-oldValue();
++newValue();
+</FILE_PATCH>
+
+<FILE_APPEND file_path="src/main.ts">
+
+function newHelper() {
+    // ...
+}
+</FILE_APPEND>
+```
+
+Rules:
+
+- Use exactly one FILE_PATCH for all in-place edits.
+- Use one FILE_APPEND for end-of-file additions.
+- Do not force EOF additions into FILE_PATCH merely to avoid a second directive.
+
+Decision rule:
+
+- Existing content changes → FILE_PATCH
+- EOF-only additions → FILE_APPEND
+- Both are needed → one FILE_PATCH + one FILE_APPEND
+
+## General Rules
 
 - The `file_path` attribute is the sole source of truth for the target file.
-- **CRITICAL: Always use `FILE_APPEND` instead of `FILE_PATCH` when adding new content to the end of a file.** `FILE_PATCH` must only be used for in-place modifications (deleting, replacing, or inserting within existing content).
 - Preserve exact formatting, indentation, and whitespace.
 - Do not invent files or paths.
-- The code fence language (e.g., `rust`, `ts`, `python`) is for syntax highlighting only.
-- Make sure and triple check that the file patch hunk body surround lines or remove lines match exactly.
-- **Never remove or alter existing comments** (except if explicitly asked by the user). Preserve them verbatim, including spacing, indentation, and placement, even if they appear redundant or outdated.
-- **Do not add trivial explanatory comments** (e.g., explaining imports, renames, or obvious changes). Only add comments that provide meaningful context, design rationale, or structure (such as region markers or explanations of non-obvious logic).
-- **Comment preservation overrides any cleanup, refactor, or reformatting rule.**
+- The code fence language (e.g. `rust`, `ts`, `python`) is for syntax highlighting only.
+- Triple-check that patch anchors exactly match the original file.
+- Never remove or alter existing comments unless explicitly requested.
+- Preserve comments verbatim, including spacing, indentation, and placement.
+- Do not add trivial explanatory comments.
+- Comment preservation overrides cleanup and refactoring preferences.
 
-### FILE_NEW
+## FILE_NEW
 
-Creates a new file. The content inside the code fence is the full file content.
+Creates a new file.
 
-```
+```xml
 <FILE_NEW file_path="path/to/file.ext">
 _full_file_contents_
 </FILE_NEW>
 ```
 
-### FILE_APPEND
+Rules:
 
-Appends content to the end of a file. If the file does not exist, it is created. Always use this directive when adding content to the end of a file (e.g., adding a new function at the end, adding a log entry, or extending a list at the end of a file).
+- The content must be the complete file.
+- Do not emit partial content.
+- Do not omit required sections of the file.
 
-- **CRITICAL: Never use `FILE_PATCH` for appends.**
-- `FILE_PATCH` is reserved for modifying, removing, or replacing existing content in-place.
+## FILE_APPEND
 
-```
+Appends content to the end of a file.
+
+If the file does not exist, it is created.
+
+Use for:
+
+- Adding functions at EOF
+- Adding entries to the end of a file
+- Extending lists located at EOF
+- Adding new sections at the end of a file
+
+```xml
 <FILE_APPEND file_path="path/to/file.ext">
 _content_to_append_
 </FILE_APPEND>
 ```
 
-### FILE_PATCH
+Rules:
 
-Modifies an existing file using a simplified, numberless unified diff format.
+- Use FILE_APPEND whenever content is only being added at EOF.
+- Do not use FILE_PATCH for pure EOF additions.
+- FILE_APPEND may be used together with a FILE_PATCH for the same file when both in-place edits and EOF additions are required.
 
-**CRITICAL:** Use `FILE_APPEND` for pure append operations (adding content only at EOF without modifying existing content). Use `FILE_PATCH` only when existing content changes.
+## FILE_PATCH
 
-- **Important: A single FILE_PATCH should contain all hunks for a given file whenever possible.**
-- **Important: When making multiple in-place edits to the same file, emit multiple `@@` hunks inside one FILE_PATCH block instead of emitting multiple FILE_PATCH blocks for the same file.**
-- **Important: Prefer one FILE_PATCH with many hunks over many FILE_PATCH directives targeting the same file.**
-- **Important: Use `~` only for one continuous range of removed lines within a single hunk.**
-- **Important: Multiple `~` usages are allowed only if they occur in separate hunks.**
-- **Important: `~` is not a literal file line. It means: "remove every line between the immediately surrounding `-` lines".**
-- **Important: The surrounding `-` lines are required anchors and must be actual removed lines from the file.**
-- **Important: Do not mix `~` with explicit `-` lines for the same removed region.**
-- **Important: Do not use `~` for additions or mixed add/remove regions.**
+Modifies an existing file using a simplified unified diff format.
 
-- **Important: Inside a patch hunk, file contents are treated literally.**
-- **Important: Do not add extra closing code fences merely because fenced blocks appear in file content.**
-- **Important: If file content contains triple backticks, do not "balance", close, or repair them unless that exact change is intended.**
+### Most Important Rule
 
-- **Important: Do not create no-op hunks consisting only of unchanged context lines.**
-- **Important: Keep patches minimal; modify only the lines required for the intended change.**
-- **Important: Preserve all unrelated content exactly as-is.**
+**A file should normally have exactly one FILE_PATCH directive.**
 
-#### Hunk header
+If multiple modifications are required:
 
-- Use a single `@@` on its own line, with no line numbers.
-- Never use `@@ -35,26 +83,32 @@`; always just `@@`.
-- Do **not** include `---` / `+++` file header lines.
-- A single `FILE_PATCH` may contain multiple hunks, each starting with `@@`.
+- Use multiple `@@` hunks.
+- Keep all hunks inside the same FILE_PATCH.
+- A FILE_PATCH may contain any number of hunks.
+- Do not split modifications for the same file across multiple FILE_PATCH directives.
 
-#### Hunk body line format
+Example:
 
-Every line in a hunk body **must** start with one of exactly three prefix characters:
-
-| Prefix | Meaning                   | Description                                                            |
-| ------ | ------------------------- | ---------------------------------------------------------------------- |
-| ` `    | Context (space character) | Unchanged surrounding line; must match the original file exactly       |
-| `-`    | Removal                   | Line to remove; must match the original file exactly                   |
-| `~`    | Range-Remove removal      | Use this when removing more than 4 consecutive lines. See rules below. |
-| `+`    | Addition                  | Line to add                                                            |
-
-**Critical rules for hunk body lines:**
-
-- Every line must begin with one of these three prefix characters. There are no exceptions.
-- Context lines (` ` prefix) and removal lines (`-` prefix) must be **exact character-for-character copies** of the corresponding lines in the original file.
-- **Never omit removal lines (`-`)** for lines that exist in the original file but are being replaced or removed.
-- **Use the `~` (tilde) marker when all removed lines form one uninterrupted consecutive block.**
-- Lines like three or four back ticks, ```ts`, or other fence markers inside a `FILE_PATCH` hunk are just normal file lines. They must still be emitted with the required diff prefix (` `, `-`, or `+`), and only when they are part of the real file content at that location.
-- Do not insert a standalone closing fence line merely because a fenced block appears elsewhere in the hunk. Every added fence line must correspond to an actual intended addition in the file.
-- Avoid no-op hunks.
-- Minimize context lines.
-- Addition lines (`+`) contain the new content to insert.
-
-#### Range-Remove (`~`) shorthand
-
-**Important: Favor this technique whenever removing more than 4–5 consecutive lines that form a single continuous block.**
-
-When removing a large consecutive block of lines:
-
-- Place `~` on its own line between two groups of `-` lines.
-- At least **2** removal lines must appear **above** the `~`.
-- At least **2** removal lines must appear **below** the `~`.
-
-**Strict rules:**
-
-- The `~` means: _remove every original line between these anchor removal lines_.
-- `~` must only appear between `-` lines.
-- Do **not** place context (` `) lines inside the removal span.
-- Do **not** use `~` as a shortcut for “and more lines like this”.
-- After expansion, the result must be equivalent to explicitly writing all removed lines with `-`.
-- What matters is whether the removed lines are physically consecutive in the source file, not whether example labels or numbers appear far apart.
-
-#### Example
-
-```
+```xml
+<FILE_PATCH file_path="src/app.ts">
 @@
- context before
--first line to remove
--second line to remove
-~
--second-to-last line to remove
--last line to remove
-+replacement line
- context after
-```
+ first modification
 
-**Meaning:**
-
-- remove `first line to remove`
-- remove `second line to remove`
-- remove all original lines in between
-- continue removing through `second-to-last line to remove`
-- remove `last line to remove`
-
-#### Correct usage
-
-```
 @@
- context before
--line 1
--line 2
-~
--line 9
--line 10
-+new replacement
- context after
+ second modification
+
+@@
+ third modification
+</FILE_PATCH>
 ```
 
-or
+### Additional FILE_PATCH Rules
 
+- Use FILE_PATCH only when existing content changes.
+- Keep patches minimal.
+- Preserve unrelated content exactly.
+- Prefer one FILE_PATCH with many hunks over multiple FILE_PATCH directives.
+- Do not use FILE_PATCH for pure EOF additions.
+- If both in-place edits and EOF additions are needed, use one FILE_PATCH plus one FILE_APPEND.
+
+### Hunk Header
+
+Use:
+
+```diff
+@@
 ```
+
+Rules:
+
+- Never use line-numbered unified diff headers.
+- Do not include `---` or `+++` file header lines.
+- A single FILE_PATCH may contain many hunks.
+
+## Hunk Body Line Format
+
+Every line inside a hunk must begin with exactly one prefix character.
+
+| Prefix | Meaning |
+| ------- | ------- |
+| ` `     | Context |
+| `-`     | Removal |
+| `+`     | Addition |
+| `~`     | Range removal |
+
+### Critical Rules
+
+- Every hunk line must begin with one of the allowed prefixes.
+- Context lines must be exact copies of the original file.
+- Removal lines must be exact copies of the original file.
+- Never omit removed lines when replacing content.
+- Preserve all unrelated content exactly.
+- Keep patches minimal.
+
+## Range Removal (`~`)
+
+Use when removing a large consecutive block.
+
+Example:
+
+```diff
 @@
 -line 1
 -line 2
 ~
 -line 9
 -line 10
++replacement
 ```
 
-#### Incorrect usage (`~` not between removal lines)
+Rules:
 
-```
-@@
- context before
--line 1
-~
- context after
-```
+- Must appear only between removal lines.
+- Must represent one continuous removed region.
+- No context lines may appear inside the removed span.
+- Prefer this form when removing more than 4–5 consecutive lines.
 
-#### Incorrect usage (context inside removal span)
+## Complete Example
 
-```
-@@
- context before
--line 1
--line 2
- unchanged line
-~
--line 9
--line 10
- context after
-```
-
-### FILE_COPY
-
-Copies a file from `from_path` to `to_path`.
-
-```
-<FILE_COPY from_path="old/path.ext" to_path="new/path.ext" />
-```
-
-### FILE_RENAME
-
-```
-<FILE_RENAME from_path="old/path.ext" to_path="new/path.ext" />
-```
-
-### FILE_DELETE
-
-```
-<FILE_DELETE file_path="path/to/file.ext" />
-```
-
-### Complete Example
-
-```
+```xml
 <FILE_CHANGES>
 
 <FILE_NEW file_path="src/hello.rs">
 pub fn hello() {
-println!("Hello from hello.rs");
+    println!("Hello from hello.rs");
 }
 </FILE_NEW>
 
@@ -243,15 +270,23 @@ println!("Hello from hello.rs");
 +mod hello;
 
  fn main() {
-- println!("Old Message");
-+ hello::hello();
+-    println!("Old Message");
++    hello::hello();
  }
+
 @@
  fn helper() {
-- old_logic();
-+ new_logic();
+-    old_logic();
++    new_logic();
  }
 </FILE_PATCH>
+
+<FILE_APPEND file_path="CHANGELOG.md">
+
+## Added
+
+- Hello module
+</FILE_APPEND>
 
 <FILE_COPY from_path="docs/OLD_README.md" to_path="docs/README.backup.md" />
 
