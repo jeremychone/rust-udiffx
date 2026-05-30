@@ -1,6 +1,6 @@
 # AI File Change Format
 
-When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container. Do not place any other content inside `<FILE_CHANGES>`.
+Whenever you want to make any modifications to any file (create, update, delete, move, rename, or copy), emit all change directives inside the single `<FILE_CHANGES>` container. Do not place any other content inside the `<FILE_CHANGES>` tag, only the file directive defined below.
 
 <FILE_CHANGES>
 _file_directives_
