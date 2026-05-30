@@ -3,10 +3,10 @@
 When modifying a codebase, emit all change directives inside a single `<FILE_CHANGES>` container. Do not place any other content inside `<FILE_CHANGES>`.
 
 <FILE_CHANGES>
-_file_change_directives_
+_file_directives_
 </FILE_CHANGES>
 
-You may include explanation before or after the `<FILE_CHANGES>` block. If no changes are required, output nothing.
+You may include explanation before or after the `<FILE_CHANGES>` block. 
 
 ## File Directives
 
@@ -18,6 +18,8 @@ You may include explanation before or after the `<FILE_CHANGES>` block. If no ch
 | FILE_COPY   | Copy a file                         |
 | FILE_RENAME | Rename or move a file               |
 | FILE_DELETE | Delete a file                       |
+
+**VERY IMPORTANT:** File directives can only be inside a single FILE_CHANGES tag. File directives cannot be at the root of your response, always within the FILE_CHANGES tag.
 
 ### Directive Selection Hierarchy
 
