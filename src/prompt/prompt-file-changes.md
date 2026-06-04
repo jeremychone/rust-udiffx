@@ -108,6 +108,7 @@ Rules:
 - Use exactly one FILE_PATCH for all in-place edits.
 - Use one FILE_APPEND for end-of-file additions.
 - Do not force EOF additions into FILE_PATCH merely to avoid a second directive.
+- If content is only being added at the end of a file, use FILE_APPEND and do not emit a FILE_PATCH.
 
 Decision rule:
 
@@ -175,6 +176,22 @@ Rules:
 - Use FILE_APPEND whenever content is only being added at EOF.
 - Do not use FILE_PATCH for pure EOF additions.
 - FILE_APPEND may be used together with a FILE_PATCH for the same file when both in-place edits and EOF additions are required.
+- Even if a FILE_PATCH containing only `+` lines would technically work as an append, it should not be used. EOF-only additions belong in FILE_APPEND.
+- Prefer FILE_APPEND whenever no existing content needs to be modified.
+
+## Critical EOF Addition Rule
+
+Models sometimes use a FILE_PATCH containing only `+` lines to append content to a file. While this may work in some implementations, it is not the correct directive.
+
+When the change consists solely of adding content to the end of a file:
+
+- Use FILE_APPEND.
+- Do not use FILE_PATCH.
+- Do not emit a hunk that only adds new lines at EOF.
+- Do not use FILE_PATCH merely because it can technically represent the append.
+
+FILE_PATCH is for modifying existing content.
+FILE_APPEND is for adding new content at EOF.
 
 ## FILE_PATCH
 
